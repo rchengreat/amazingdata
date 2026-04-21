@@ -1,0 +1,9 @@
+venv/
+logs/
+__pycache__/
+*.py[cod]
+.env
+sdk_cache/
+data/
+wheel/
+.DS_Store
