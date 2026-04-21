@@ -72,11 +72,22 @@ def fetch_stock_basic(bdo, ido, output_dir: str):
 
 
 def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
-    logger.info("拉取 info_stock_factor（增量：追加新日期行）...")
+    """
+    get_backward_factor 每次下载全量宽表（~4500 万行），耗时长。
+    策略：若现有数据不超过 7 天旧，直接跳过，避免每天重复下载。
+    """
+    from datetime import date, timedelta
     out_path = str(Path(output_dir) / "info_stock_factor.parquet")
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "datetime") if existing is not None else None
 
+    if max_dt is not None:
+        days_old = (date.today() - date.fromisoformat(f"{max_dt[:4]}-{max_dt[4:6]}-{max_dt[6:]}")).days
+        if days_old <= 7:
+            logger.info(f"info_stock_factor 已是 {days_old} 天前数据（{max_dt}），跳过下载")
+            return
+
+    logger.info("拉取 info_stock_factor（全量下载，get_backward_factor）...")
     code_list = bdo.get_code_list()
     df_factor = bdo.get_backward_factor(code_list, sdk_cache_dir, is_local=False)
     if df_factor is None or df_factor.empty:
