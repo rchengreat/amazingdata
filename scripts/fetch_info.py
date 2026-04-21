@@ -155,7 +155,12 @@ def fetch_index_weight(ido, index_codes: list, output_dir: str, sdk_cache_dir: s
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "TRADE_DATE") if existing is not None else None
 
-    df = ido.get_index_weight(index_codes, local_path=sdk_cache_dir, is_local=False)
+    try:
+        df = ido.get_index_weight(index_codes, local_path=sdk_cache_dir, is_local=False)
+    except Exception as e:
+        logger.error(f"get_index_weight SDK 异常: {e}，保留已有文件不覆盖")
+        return
+
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_index_weight 返回空数据")
         return
