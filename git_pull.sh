@@ -12,6 +12,7 @@ mkdir -p "$REPO_DIR/logs"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] git pull..." | tee -a "$LOG"
 
 cd "$REPO_DIR"
+git config http.version HTTP/1.1
 git fetch origin main 2>&1 | tee -a "$LOG"
 
 LOCAL=$(git rev-parse HEAD)
