@@ -29,6 +29,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting: $SCRIPT $*" | tee -a "$LOG_FILE"
   -v "$PROJECT_DIR/sdk_cache:/volume1/amazingdata/sdk_cache" \
   -v "$PROJECT_DIR/logs:/app/logs" \
   -v "$PROJECT_DIR/scripts:/app/scripts" \
+  -v "$PROJECT_DIR/src:/app/src" \
   --env-file "$PROJECT_DIR/.env" \
   -e NUMBA_CACHE_DIR=/tmp/numba_cache \
   "$IMAGE" \
