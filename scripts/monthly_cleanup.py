@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dotenv import load_dotenv
 from loguru import logger
 import pandas as pd
+from amazingdata_fetcher.writer import write_parquet
 
 load_dotenv()
 
@@ -65,7 +66,7 @@ def merge_and_cleanup(data_type: str, month_str: str, output_dir: str):
     else:
         df_combined = df_new
 
-    df_combined.to_parquet(history_file, index=False, compression="snappy")
+    write_parquet(df_combined, output_dir, f"extra_{data_type}_history")
     logger.info(f"历史文件已写入：{history_file}（共 {len(df_combined)} 行）")
 
     # 删除当月日文件
