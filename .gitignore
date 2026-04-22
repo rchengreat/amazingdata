@@ -7,3 +7,5 @@ sdk_cache/
 data/
 wheel/
 .DS_Store
+.obsidian/
+.claude/

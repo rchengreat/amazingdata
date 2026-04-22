@@ -207,7 +207,7 @@ def main():
 
     # get_index_weight 只对 5 个主流宽基指数有效，传入所有 624 个指数会导致 SDK 崩溃
     # 参考：extract_ad_stock.ipynb
-    major_index_codes = ["000016.SH", "000300.SH", "000905.SH", "000906.SH", "000852.SH"]
+    major_index_codes = ["000016.SH", "000300.SH", "000905.SH", "000906.SH", "000852.SH", "000985.SH","000688.SH","399006.SZ"]
     fetch_index_weight(ido, major_index_codes, output_dir, sdk_cache_dir)
 
     logger.info("fetch_info.py 全部完成")
