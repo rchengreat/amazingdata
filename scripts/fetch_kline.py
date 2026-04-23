@@ -38,6 +38,17 @@ def dict_to_df(d: dict) -> pd.DataFrame:
     return pd.concat(list(d.values()), ignore_index=True)
 
 
+def normalize_kline_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """统一 kline DataFrame 的类型，与 tgw 输出保持一致：
+    - kline_time: datetime64[ns]（tgw 用 ns，SDK 默认返回 us）
+    - amount: int64（tgw 截断为整数，SDK 返回浮点）
+    """
+    if pd.api.types.is_datetime64_any_dtype(df["kline_time"]):
+        df["kline_time"] = df["kline_time"].astype("datetime64[ns]")
+    df["amount"] = df["amount"].astype("int64")
+    return df
+
+
 def get_trade_dates_since(bdo, since_date: str, until_date: str) -> list[str]:
     """
     返回 [since_date, until_date] 之间的交易日列表（YYYYMMDD 字符串）。
@@ -117,6 +128,7 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
         df["backward_factor"] = float("nan")
 
     df = df.reset_index(drop=True)
+    df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_stock_{trade_date}.parquet")
 
 
@@ -134,6 +146,7 @@ def fetch_index(bdo, mdo, trade_date: str, output_dir: str):
         return
     df = dict_to_df(df_kline)
     df = df.reset_index(drop=True)
+    df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_index_{trade_date}.parquet")
 
 
@@ -151,6 +164,7 @@ def fetch_etf(bdo, mdo, trade_date: str, output_dir: str):
         return
     df = dict_to_df(df_kline)
     df = df.reset_index(drop=True)
+    df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_etf_{trade_date}.parquet")
 
 
