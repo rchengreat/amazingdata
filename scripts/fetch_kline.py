@@ -112,19 +112,18 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
         return
     df = dict_to_df(df_kline)
 
-    # 合并后复权因子
-    df_factor = bdo.get_backward_factor(code_list, sdk_cache_dir, is_local=False)
-    if df_factor is not None and not df_factor.empty:
-        date_str = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
-        try:
-            df_factor_day = df_factor.loc[date_str].to_frame(name="backward_factor")
-            df_factor_day.index.name = "code"
-            df_factor_day = df_factor_day.reset_index()
-            df = pd.merge(df, df_factor_day, on="code", how="left")
-        except KeyError:
-            logger.warning(f"后复权因子中无 {date_str}，backward_factor 留空")
-            df["backward_factor"] = float("nan")
+    # 合并后复权因子：读取 fetch_info.py 已写好的长表，按日期过滤后双键合并
+    date_str = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
+    factor_path = Path(output_dir) / "info_stock_factor.parquet"
+    if factor_path.exists():
+        df_factor = pd.read_parquet(factor_path)
+        df_factor = df_factor[df_factor["datetime"] == date_str].copy()
+        df_factor.columns = ["code", "kline_time", "backward_factor"]
+        df = pd.merge(df, df_factor, on=["kline_time", "code"], how="left")
+        if df["backward_factor"].isnull().all():
+            logger.warning(f"info_stock_factor.parquet 中无 {date_str} 数据，backward_factor 留空")
     else:
+        logger.warning(f"找不到 {factor_path}，backward_factor 留空")
         df["backward_factor"] = float("nan")
 
     df = df.reset_index(drop=True)
