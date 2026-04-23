@@ -83,7 +83,7 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
 
     if max_dt is not None:
         days_old = (date.today() - date.fromisoformat(f"{max_dt[:4]}-{max_dt[4:6]}-{max_dt[6:]}")).days
-        if days_old <= 7:
+        if days_old <= 1:
             logger.info(f"info_stock_factor 已是 {days_old} 天前数据（{max_dt}），跳过下载")
             return
 
@@ -155,17 +155,26 @@ def fetch_index_weight(ido, index_codes: list, output_dir: str, sdk_cache_dir: s
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "TRADE_DATE") if existing is not None else None
 
-    try:
-        df = ido.get_index_weight(index_codes, local_path=sdk_cache_dir, is_local=False)
-    except Exception as e:
-        logger.error(f"get_index_weight SDK 异常: {e}，保留已有文件不覆盖")
-        return
+    # SDK bug: passing multiple codes causes internal sort_values('TRADE_DATE') to crash
+    # when any sub-DataFrame lacks that column. Call one-by-one and concat ourselves.
+    dfs = []
+    for code in index_codes:
+        try:
+            result = ido.get_index_weight([code], local_path=sdk_cache_dir, is_local=False)
+        except Exception as e:
+            logger.warning(f"get_index_weight({code}) SDK 异常: {e}，跳过该代码")
+            continue
+        if result is None:
+            continue
+        if isinstance(result, dict):
+            dfs.extend(result.values())
+        elif isinstance(result, pd.DataFrame) and not result.empty:
+            dfs.append(result)
 
-    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        logger.error("get_index_weight 返回空数据")
+    if not dfs:
+        logger.error("get_index_weight 所有代码均失败，保留已有文件不覆盖")
         return
-    if isinstance(df, dict):
-        df = dict_to_df(df)
+    df = pd.concat(dfs, ignore_index=True)
 
     result = append_new_rows(existing, df, "TRADE_DATE", max_dt)
     write_parquet(result, output_dir, "info_index_weight_history.parquet")
@@ -205,7 +214,7 @@ def main():
 
     fetch_index_detail(ido, index_codes, output_dir, sdk_cache_dir)
 
-    # get_index_weight 只对 5 个主流宽基指数有效，传入所有 624 个指数会导致 SDK 崩溃
+    # get_index_weight 只对 8 个主流宽基指数有效，传入所有 624 个指数会导致 SDK 崩溃
     # 参考：extract_ad_stock.ipynb
     major_index_codes = ["000016.SH", "000300.SH", "000905.SH", "000906.SH", "000852.SH", "000985.SH","000688.SH","399006.SZ"]
     fetch_index_weight(ido, major_index_codes, output_dir, sdk_cache_dir)
