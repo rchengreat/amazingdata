@@ -83,7 +83,7 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
 
     if max_dt is not None:
         days_old = (date.today() - date.fromisoformat(f"{max_dt[:4]}-{max_dt[4:6]}-{max_dt[6:]}")).days
-        if days_old <= 1:
+        if days_old == 0:
             logger.info(f"info_stock_factor 已是 {days_old} 天前数据（{max_dt}），跳过下载")
             return
 
