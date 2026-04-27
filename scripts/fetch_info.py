@@ -73,18 +73,18 @@ def fetch_stock_basic(bdo, ido, output_dir: str):
 
 def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
     """
-    get_backward_factor 每次下载全量宽表（~4500 万行），耗时长。
-    策略：若现有数据不超过 7 天旧，直接跳过，避免每天重复下载。
+    get_backward_factor 每次下载全量宽表（~4500 万行）并全量覆写文件。
+    策略：若文件已在今日 15:30 后写入（市场收盘后），直接跳过。
+    不能增量追加——复权因子会对历史日期溯源调整，每次必须全量覆写。
     """
-    from datetime import date, timedelta
-    out_path = str(Path(output_dir) / "info_stock_factor.parquet")
-    existing = load_existing(out_path)
-    max_dt = max_date_str(existing, "datetime") if existing is not None else None
+    import datetime as dt
+    out_path = Path(output_dir) / "info_stock_factor.parquet"
 
-    if max_dt is not None:
-        days_old = (date.today() - date.fromisoformat(f"{max_dt[:4]}-{max_dt[4:6]}-{max_dt[6:]}")).days
-        if days_old == 0:
-            logger.info(f"info_stock_factor 已是 {days_old} 天前数据（{max_dt}），跳过下载")
+    if out_path.exists():
+        mtime = dt.datetime.fromtimestamp(out_path.stat().st_mtime)
+        market_close_today = dt.datetime.combine(dt.date.today(), dt.time(15, 30))
+        if mtime >= market_close_today:
+            logger.info(f"info_stock_factor 已在今日 {mtime.strftime('%H:%M')} 收盘后写入，跳过下载")
             return
 
     logger.info("拉取 info_stock_factor（全量下载，get_backward_factor）...")
@@ -94,13 +94,12 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
         logger.error("get_backward_factor 返回空数据")
         return
 
-    # 宽表 → 长表
+    # 宽表 → 长表（全量覆写，不追加）
     df_long = df_factor.unstack().reset_index()
     df_long.columns = ["instrument", "datetime", "backward_factor"]
     df_long["datetime"] = pd.to_datetime(df_long["datetime"])
 
-    result = append_new_rows(existing, df_long, "datetime", max_dt)
-    write_parquet(result, output_dir, "info_stock_factor.parquet")
+    write_parquet(df_long, output_dir, "info_stock_factor.parquet")
 
 
 def fetch_industry_basic(ido, output_dir: str, sdk_cache_dir: str):
