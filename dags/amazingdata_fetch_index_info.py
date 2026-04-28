@@ -3,7 +3,7 @@
 amazingdata_fetch_index_info.py
 
 DAG: amazingdata_fetch_index_info
-Schedule: 工作日 03:30
+Schedule: 工作日 15:30
 
 Tasks:
   fetch_index_info — info_index_detail_history.parquet（增量）
@@ -38,12 +38,12 @@ default_args = {
 with DAG(
     dag_id="amazingdata_fetch_index_info",
     default_args=default_args,
-    schedule="30 3 * * 1-5",
+    schedule="30 15 * * 1-5",
     start_date=datetime(2026, 4, 28),
     catchup=False,
     max_active_runs=1,
     tags=["amazingdata", "index", "info", "daily"],
-    description="工作日 03:30 拉取 info_index_detail_history 和 info_index_weight_history",
+    description="工作日 15:30 拉取 info_index_detail_history 和 info_index_weight_history",
 ) as dag:
 
     fetch_index_info = BashOperator(

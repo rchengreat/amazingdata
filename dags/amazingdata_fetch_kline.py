@@ -3,12 +3,12 @@
 amazingdata_fetch_kline.py
 
 DAG: amazingdata_fetch_kline
-Schedule: 工作日 15:15（股票 stock）、15:45（指数 index）、16:00（ETF etf）
+Schedule: 工作日 15:15（ETF etf）、15:45（指数 index）、16:00（股票 stock）
 
 Tasks（串行）：
-  fetch_kline_stock  — extra_stock_{date}.parquet（含实时复权因子）
-  fetch_kline_index  — extra_index_{date}.parquet
   fetch_kline_etf    — extra_etf_{date}.parquet
+  fetch_kline_index  — extra_index_{date}.parquet
+  fetch_kline_stock  — extra_stock_{date}.parquet（含实时复权因子）
 
 每个任务独立成功/失败，串行执行避免并发抢占 SDK 连接。
 """
@@ -46,7 +46,7 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     tags=["amazingdata", "kline", "daily"],
-    description="工作日 15:15 起依次拉取 stock / index / etf 日 K 线",
+    description="工作日 15:15 起依次拉取 etf / index / stock 日 K 线",
 ) as dag:
 
     fetch_stock = BashOperator(
@@ -67,4 +67,4 @@ with DAG(
         execution_timeout=timedelta(hours=1),
     )
 
-    fetch_stock >> fetch_index >> fetch_etf
+    fetch_etf >> fetch_index >> fetch_stock
