@@ -100,7 +100,9 @@ def pending_dates(bdo, ktype: str, output_dir: str, until_date: str) -> list[str
 
 def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
     logger.info(f"拉取 extra_stock_{trade_date}...")
-    code_list = bdo.get_code_list("EXTRA_STOCK_A_SH_SZ")
+    code_list = bdo.get_code_list("EXTRA_STOCK_A")
+    logger.info(f"股票代码数: {len(code_list)}")
+
     df_kline = mdo.query_kline(
         code_list,
         begin_date=int(trade_date),
@@ -108,32 +110,43 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
         period=ad.constant.Period.day.value,
     )
     if not df_kline:
-        logger.warning(f"query_kline EXTRA_STOCK_A_SH_SZ {trade_date} 返回空（非交易日？）")
+        logger.warning(f"query_kline EXTRA_STOCK_A {trade_date} 返回空（非交易日？）")
         return
     df = dict_to_df(df_kline)
+    logger.info(f"query_kline 返回 {len(df)} 行")
 
-    # 合并后复权因子：读取 fetch_info.py 已写好的长表，按日期过滤后双键合并
-    date_str = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
-    factor_path = Path(output_dir) / "info_stock_factor.parquet"
-    if factor_path.exists():
-        df_factor = pd.read_parquet(factor_path)
-        df_factor = df_factor[df_factor["datetime"] == date_str].copy()
+    # 与 extract_ad_stock.ipynb 完全一致：实时下载当日复权因子后按日期过滤合并
+    # 不依赖 info_stock_factor.parquet 是否存在，确保因子数据与行情同步
+    logger.info(f"下载复权因子（全量，过滤 {trade_date}）...")
+    df_factor = bdo.get_backward_factor(code_list, local_path=sdk_cache_dir, is_local=False)
+    if df_factor is not None and not df_factor.empty:
+        df_factor = df_factor.unstack().reset_index()
+        df_factor.columns = ["instrument", "datetime", "backward_factor"]
+        # 过滤当日
+        begin_idx = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
+        end_idx = begin_idx
+        df_factor = df_factor[df_factor["datetime"].between(begin_idx, end_idx)].copy()
         df_factor.columns = ["code", "kline_time", "backward_factor"]
+        # 统一类型确保 merge key 匹配
+        df_factor["kline_time"] = pd.to_datetime(df_factor["kline_time"]).astype("datetime64[ns]")
+        logger.info(f"复权因子过滤后 {len(df_factor)} 行（{begin_idx}）")
         df = pd.merge(df, df_factor, on=["kline_time", "code"], how="left")
         if df["backward_factor"].isnull().all():
-            logger.warning(f"info_stock_factor.parquet 中无 {date_str} 数据，backward_factor 留空")
+            logger.warning(f"复权因子中无 {begin_idx} 数据，backward_factor 留空")
     else:
-        logger.warning(f"找不到 {factor_path}，backward_factor 留空")
+        logger.warning("get_backward_factor 返回空，backward_factor 留空")
         df["backward_factor"] = float("nan")
 
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_stock_{trade_date}.parquet")
+    logger.info(f"extra_stock_{trade_date}.parquet 写入完成，共 {len(df)} 行")
 
 
 def fetch_index(bdo, mdo, trade_date: str, output_dir: str):
     logger.info(f"拉取 extra_index_{trade_date}...")
     code_list = bdo.get_code_list("EXTRA_INDEX_A_SH_SZ")
+    logger.info(f"指数代码数: {len(code_list)}")
     df_kline = mdo.query_kline(
         code_list,
         begin_date=int(trade_date),
@@ -147,11 +160,13 @@ def fetch_index(bdo, mdo, trade_date: str, output_dir: str):
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_index_{trade_date}.parquet")
+    logger.info(f"extra_index_{trade_date}.parquet 写入完成，共 {len(df)} 行")
 
 
 def fetch_etf(bdo, mdo, trade_date: str, output_dir: str):
     logger.info(f"拉取 extra_etf_{trade_date}...")
     code_list = bdo.get_code_list("EXTRA_ETF")
+    logger.info(f"ETF 代码数: {len(code_list)}")
     df_kline = mdo.query_kline(
         code_list,
         begin_date=int(trade_date),
@@ -165,6 +180,7 @@ def fetch_etf(bdo, mdo, trade_date: str, output_dir: str):
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_etf_{trade_date}.parquet")
+    logger.info(f"extra_etf_{trade_date}.parquet 写入完成，共 {len(df)} 行")
 
 
 def main():
