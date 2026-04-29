@@ -23,7 +23,8 @@ _DOCKER_BASE = (
     "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
     "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "
     "-v /volume1/amazingdata/logs:/app/logs "
-    "--env-file /opt/amazingdata/.env "
+    "-e AD_HOST -e AD_PORT -e AD_USERNAME -e AD_PASSWORD "\
+    "-e OUTPUT_DIR=$AD_OUTPUT_DIR -e SDK_CACHE_DIR=$AD_SDK_CACHE_DIR "
     "-e NUMBA_CACHE_DIR=/tmp/numba_cache "
     "amazingdata-fetcher:latest "
     "python3 scripts/fetch_kline.py --type {ktype}"
