@@ -18,7 +18,7 @@ from airflow.providers.standard.operators.bash import BashOperator
 
 # ── Docker run 模板（与 NAS 手动运行命令完全一致）─────────────────
 DOCKER_CMD = (
-    "sudo /usr/local/bin/docker run --rm "
+    "/usr/local/bin/docker run --rm "
     "--user 1026:100 "
     "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
     "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "
