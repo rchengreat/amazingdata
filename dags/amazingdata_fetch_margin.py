@@ -3,7 +3,7 @@
 amazingdata_fetch_margin.py
 
 DAG: amazingdata_fetch_margin
-Schedule: 工作日 15:40
+Schedule: 工作日 16:15
 
 Tasks:
   fetch_margin — margin_summary_history.parquet（增量）
@@ -13,19 +13,6 @@ Tasks:
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
-
-DOCKER_CMD = (
-    "/usr/local/bin/docker run --rm "
-    "--user 1026:100 "
-    "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
-    "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "
-    "-v /volume1/amazingdata/logs:/app/logs "
-    "-e AD_HOST -e AD_PORT -e AD_USERNAME -e AD_PASSWORD "\
-    "-e OUTPUT_DIR=$AD_OUTPUT_DIR -e SDK_CACHE_DIR=$AD_SDK_CACHE_DIR "
-    "-e NUMBA_CACHE_DIR=/tmp/numba_cache "
-    "amazingdata-fetcher:latest "
-    "python3 scripts/{script}"
-)
 
 default_args = {
     "owner": "rollandchen",
@@ -39,15 +26,18 @@ default_args = {
 with DAG(
     dag_id="amazingdata_fetch_margin",
     default_args=default_args,
-    schedule="40 15 * * 1-5",
+    schedule="15 16 * * 1-5",
     start_date=datetime(2026, 4, 28),
     catchup=False,
     max_active_runs=1,
     tags=["amazingdata", "margin", "daily"],
-    description="工作日 15:40 拉取 margin_summary_history 和 margin_detail_history",
+    description="工作日 16:15 拉取 margin_summary_history 和 margin_detail_history",
 ) as dag:
 
     fetch_margin = BashOperator(
         task_id="fetch_margin",
-        bash_command=DOCKER_CMD.format(script="fetch_margin.py"),
+        bash_command=(
+            "PYTHONPATH=/opt/airflow/src_ad:/opt/airflow/src "
+            "python3 /opt/airflow/scripts_ad/fetch_margin.py"
+        ),
     )

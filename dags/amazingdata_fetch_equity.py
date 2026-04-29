@@ -14,19 +14,6 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 
-DOCKER_CMD = (
-    "/usr/local/bin/docker run --rm "
-    "--user 1026:100 "
-    "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
-    "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "
-    "-v /volume1/amazingdata/logs:/app/logs "
-    "-e AD_HOST -e AD_PORT -e AD_USERNAME -e AD_PASSWORD "\
-    "-e OUTPUT_DIR=$AD_OUTPUT_DIR -e SDK_CACHE_DIR=$AD_SDK_CACHE_DIR "
-    "-e NUMBA_CACHE_DIR=/tmp/numba_cache "
-    "amazingdata-fetcher:latest "
-    "python3 scripts/{script}"
-)
-
 default_args = {
     "owner": "rollandchen",
     "depends_on_past": False,
@@ -49,5 +36,8 @@ with DAG(
 
     fetch_equity = BashOperator(
         task_id="fetch_equity",
-        bash_command=DOCKER_CMD.format(script="fetch_equity.py"),
+        bash_command=(
+            "PYTHONPATH=/opt/airflow/src_ad:/opt/airflow/src "
+            "python3 /opt/airflow/scripts_ad/fetch_equity.py"
+        ),
     )
