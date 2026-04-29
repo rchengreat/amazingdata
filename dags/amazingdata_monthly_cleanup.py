@@ -14,6 +14,18 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 
+DOCKER_CMD = (
+    "sudo /usr/local/bin/docker run --rm "
+    "--user 1026:100 "
+    "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
+    "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "
+    "-v /volume1/amazingdata/logs:/app/logs "
+    "--env-file /volume1/amazingdata/.env "
+    "-e NUMBA_CACHE_DIR=/tmp/numba_cache "
+    "amazingdata-fetcher:latest "
+    "python3 scripts/monthly_cleanup.py"
+)
+
 default_args = {
     "owner": "rollandchen",
     "depends_on_past": False,
@@ -36,8 +48,5 @@ with DAG(
 
     monthly_cleanup = BashOperator(
         task_id="monthly_cleanup",
-        bash_command=(
-            "PYTHONPATH=/opt/airflow/src_ad:/opt/airflow/src "
-            "python3 /opt/airflow/scripts_ad/monthly_cleanup.py"
-        ),
+        bash_command=DOCKER_CMD,
     )
