@@ -20,7 +20,7 @@ DOCKER_CMD = (
     "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
     "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "
     "-v /volume1/amazingdata/logs:/app/logs "
-    "--env-file /volume1/amazingdata/.env "
+    "--env-file /opt/amazingdata/.env "
     "-e NUMBA_CACHE_DIR=/tmp/numba_cache "
     "amazingdata-fetcher:latest "
     "python3 scripts/{script}"
