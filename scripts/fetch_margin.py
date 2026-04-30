@@ -106,12 +106,17 @@ def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: st
                 logger.info(f"本地缓存读取完成，{len(chunk):,} 行")
         del result
 
-    # --- Remote batches: download + cache (is_local=False) ---
+    # --- Remote batches: download with throwaway /tmp cache to avoid HDF5 issues ---
+    # Using sdk_cache_dir as local_path for is_local=False causes HDF5 write errors
+    # that kill the process. Use /tmp instead — we don't need the cache for remote fetches
+    # since the data goes straight into all_chunks.
+    tmp_cache = "/tmp/margin_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
     n_batches = (len(remote_codes) + BATCH_SIZE - 1) // BATCH_SIZE
     for i in range(n_batches):
         batch = remote_codes[i * BATCH_SIZE:(i + 1) * BATCH_SIZE]
         logger.info(f"远程批次 {i+1}/{n_batches}：下载 {len(batch)} 只...")
-        result = _sdk_fetch(ido.get_margin_detail, batch, sdk_cache_dir, False)
+        result = _sdk_fetch(ido.get_margin_detail, batch, tmp_cache, False)
         if result is not None:
             chunk = dict_to_df(result) if isinstance(result, dict) else result
             if not chunk.empty:
