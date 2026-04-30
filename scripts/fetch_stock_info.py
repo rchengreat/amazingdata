@@ -46,7 +46,7 @@ def fetch_stock_basic(bdo, ido, output_dir: str):
         return
 
     logger.info(f"新增代码数: {len(delta_codes)}，开始拉取...")
-    df_new = ido.get_stock_basic(delta_codes, is_local=False)
+    df_new = ido.get_stock_basic(delta_codes)
     if df_new is None or (isinstance(df_new, pd.DataFrame) and df_new.empty):
         logger.warning("get_stock_basic 返回空数据")
         return
