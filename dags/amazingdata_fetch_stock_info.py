@@ -3,7 +3,7 @@
 amazingdata_fetch_stock_info.py
 
 DAG: amazingdata_fetch_stock_info
-Schedule: 工作日 03:00
+Schedule: 工作日 15:20
 
 Tasks:
   fetch_stock_info — info_stock_basic.parquet（增量）
@@ -45,12 +45,12 @@ default_args = {
 with DAG(
     dag_id="amazingdata_fetch_stock_info",
     default_args=default_args,
-    schedule="0 3 * * 1-5",
+    schedule="20 15 * * 1-5",
     start_date=datetime(2026, 4, 28),
     catchup=False,
     max_active_runs=1,
     tags=["amazingdata", "stock", "info", "daily"],
-    description="工作日 03:00 拉取 info_stock_basic 和 info_stock_factor",
+    description="工作日 15:20 拉取 info_stock_basic 和 info_stock_factor",
 ) as dag:
 
     fetch_stock_info = BashOperator(

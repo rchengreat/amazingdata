@@ -16,8 +16,8 @@
 | info_industry_basic_history.parquet   | 行业指数基本信息    | 全量   | get_industry_base_info       | 工作日 14:30 | python scripts/import_tgw_data.py --type industry_basic --file info_industry_basic.parquet           |
 | info_industry_detail_history.parquet  | 行业指数成分股     | 全量   | get_industry_constituent     | 工作日 14:30 | python scripts/import_tgw_data.py --type industry_detail --file info_industry_detail_history.parquet |
 | extra_etf_20260420.parquet            | ETF         | 增量   | query_kline                  | 工作日 15:15 | python scripts/import_tgw_data.py --type etf_data --file extra_etf_20260420.parquet                  |
-| info_stock_basic.parquet              | 证券基础信息      | 全量   | get_stock_basic              | 工作日 15:25 | python scripts/import_tgw_data.py --type stock_basic --file info_stock_basic.parquet                 |
-| info_stock_factor.parquet             | 后复权因子       | 全量   | BaseData.get_backward_factor | 工作日 15:25 | python scripts/import_tgw_data.py --type stock_factor --file info_stock_factor.parquet               |
+| info_stock_basic.parquet              | 证券基础信息      | 全量   | get_stock_basic              | 工作日 15:20 | python scripts/import_tgw_data.py --type stock_basic --file info_stock_basic.parquet                 |
+| info_stock_factor.parquet             | 后复权因子       | 全量   | BaseData.get_backward_factor | 工作日 15:20 | python scripts/import_tgw_data.py --type stock_factor --file info_stock_factor.parquet               |
 | info_index_detail_history.parquet     | 交易所指数成分股    | 全量   | get_index_constituent        | 工作日 15:30 | python scripts/import_tgw_data.py --type index_stock_detail --file info_index_detail.parquet         |
 | info_index_weight_history.parquet     | 交易所指数成分股日权重 | 全量   | get_index_weight             | 工作日 15:30 | python scripts/import_tgw_data.py --type index_weight --file info_index_weight_history.parquet       |
 | margin_summary_history.parquet        | 融资融券汇总      | 全量   | get_margin_summary           | 工作日 15:40 | python scripts/import_tgw_data.py --type margin_summary --file margin_summary_history.parquet        |
