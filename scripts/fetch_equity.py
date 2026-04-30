@@ -35,7 +35,9 @@ def fetch_equity_structure(ido, code_list: list, output_dir: str, sdk_cache_dir:
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "CHANGE_DATE") if existing is not None else None
 
-    df = ido.get_equity_structure(code_list, local_path=sdk_cache_dir, is_local=False)
+    tmp_cache = "/tmp/equity_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = ido.get_equity_structure(code_list, local_path=tmp_cache, is_local=False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_equity_structure 返回空数据")
         return
@@ -52,7 +54,9 @@ def fetch_equity_dividend(ido, code_list: list, output_dir: str, sdk_cache_dir: 
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "DATE_EQY_RECORD") if existing is not None else None
 
-    df = ido.get_dividend(code_list, local_path=sdk_cache_dir, is_local=False)
+    tmp_cache = "/tmp/equity_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = ido.get_dividend(code_list, local_path=tmp_cache, is_local=False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_dividend 返回空数据")
         return

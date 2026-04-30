@@ -55,7 +55,9 @@ def fetch_margin_summary(ido, output_dir: str, sdk_cache_dir: str):
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "TRADE_DATE") if existing is not None else None
 
-    df = _sdk_fetch(ido.get_margin_summary, sdk_cache_dir, False)
+    tmp_cache = "/tmp/margin_summary_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = _sdk_fetch(ido.get_margin_summary, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_margin_summary 返回空数据，跳过")
         return

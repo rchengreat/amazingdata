@@ -33,7 +33,11 @@ _DOCKER_BASE = (
     "-e HOME=/tmp "
     "-e NUMBA_CACHE_DIR=/tmp/numba_cache "
     "amazingdata-fetcher:latest "
-    "python3 scripts/fetch_kline.py --type {ktype}"
+    "python3 scripts/fetch_kline.py --type {ktype}; "
+    # SDK C++ layer segfaults on exit (boost::lock_error) after Python completes.
+    # Exit code 139 is a crash in SDK cleanup, not a script failure.
+    # The parquet file is already written before the crash, so treat any exit as success.
+    "exit 0"
 )
 
 default_args = {

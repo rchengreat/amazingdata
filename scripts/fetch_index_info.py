@@ -36,7 +36,9 @@ def fetch_index_detail(ido, index_codes: list, output_dir: str, sdk_cache_dir: s
     max_dt = max_date_str(existing, "INDATE") if existing is not None else None
     logger.info(f"已有最大 INDATE: {max_dt}")
 
-    df = ido.get_index_constituent(index_codes, local_path=sdk_cache_dir, is_local=False)
+    tmp_cache = "/tmp/index_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = ido.get_index_constituent(index_codes, local_path=tmp_cache, is_local=False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_index_constituent 返回空数据")
         return
@@ -59,10 +61,12 @@ def fetch_index_weight(ido, index_codes: list, output_dir: str, sdk_cache_dir: s
 
     # SDK bug: 传入多个代码会因内部 sort_values('TRADE_DATE') 崩溃（部分代码无该列）
     # 逐个代码单独调用后手动 concat
+    tmp_cache = "/tmp/index_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
     dfs = []
     for code in index_codes:
         try:
-            result = ido.get_index_weight([code], local_path=sdk_cache_dir, is_local=False)
+            result = ido.get_index_weight([code], local_path=tmp_cache, is_local=False)
         except Exception as e:
             logger.warning(f"get_index_weight({code}) SDK 异常: {e}，跳过")
             continue

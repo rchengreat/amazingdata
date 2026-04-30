@@ -68,7 +68,7 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
     """
     与 extract_ad_stock.ipynb 使用完全相同的逻辑：
       1. get_code_list('EXTRA_STOCK_A')
-      2. get_backward_factor(code_list, local_path=sdk_cache_dir, is_local=False)
+      2. get_backward_factor(code_list, local_path=tmp_cache, is_local=False)
       3. unstack().reset_index()，columns = ['instrument', 'datetime', 'backward_factor']
       4. 全量覆写（zstd 压缩）
 
@@ -91,7 +91,9 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
     code_list = bdo.get_code_list("EXTRA_STOCK_A")
     logger.info(f"股票代码数: {len(code_list)}，开始下载复权因子（全量，约 4500 万行）...")
 
-    df_factor = bdo.get_backward_factor(code_list, local_path=sdk_cache_dir, is_local=False)
+    tmp_cache = "/tmp/stock_factor_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df_factor = bdo.get_backward_factor(code_list, local_path=tmp_cache, is_local=False)
     if df_factor is None or df_factor.empty:
         logger.error("get_backward_factor 返回空数据")
         return

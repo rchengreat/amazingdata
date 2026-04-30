@@ -30,7 +30,9 @@ load_dotenv()
 def fetch_industry_basic(ido, output_dir: str, sdk_cache_dir: str):
     logger.info("=" * 60)
     logger.info("开始拉取 info_industry_basic_history（全量刷新，小文件）")
-    df = ido.get_industry_base_info(local_path=sdk_cache_dir, is_local=False)
+    tmp_cache = "/tmp/industry_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = ido.get_industry_base_info(local_path=tmp_cache, is_local=False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_industry_base_info 返回空数据")
         return
@@ -50,7 +52,9 @@ def fetch_industry_detail(ido, industry_codes: list, output_dir: str, sdk_cache_
     max_dt = max_date_str(existing, "INDATE") if existing is not None else None
     logger.info(f"已有最大 INDATE: {max_dt}")
 
-    df = ido.get_industry_constituent(industry_codes, local_path=sdk_cache_dir, is_local=False)
+    tmp_cache = "/tmp/industry_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = ido.get_industry_constituent(industry_codes, local_path=tmp_cache, is_local=False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_industry_constituent 返回空数据")
         return

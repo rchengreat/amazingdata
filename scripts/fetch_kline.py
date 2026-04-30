@@ -118,7 +118,9 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
     # 与 extract_ad_stock.ipynb 完全一致：实时下载当日复权因子后按日期过滤合并
     # 不依赖 info_stock_factor.parquet 是否存在，确保因子数据与行情同步
     logger.info(f"下载复权因子（全量，过滤 {trade_date}）...")
-    df_factor = bdo.get_backward_factor(code_list, local_path=sdk_cache_dir, is_local=False)
+    tmp_cache = "/tmp/kline_factor_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df_factor = bdo.get_backward_factor(code_list, local_path=tmp_cache, is_local=False)
     if df_factor is not None and not df_factor.empty:
         df_factor = df_factor.unstack().reset_index()
         df_factor.columns = ["instrument", "datetime", "backward_factor"]

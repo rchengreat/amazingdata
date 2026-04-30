@@ -6,8 +6,13 @@ fetch_finance.py — 拉取三张财务报表（增量模式）
   - finance_cash_flow_history.parquet      ← get_cash_flow（追加新 REPORTING_PERIOD 行）
   - finance_income_history.parquet         ← get_income（追加新 REPORTING_PERIOD 行）
 
+用法：
+  python3 fetch_finance.py --statement balance_sheet|cash_flow|income
+  （不传则依次执行全部三张，但 SDK 可能在中途 segfault 导致后续报表丢失）
+
 运行时间：工作日 05:00 / 06:00 / 07:00
 """
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -48,7 +53,9 @@ def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: st
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "REPORTING_PERIOD") if existing is not None else None
 
-    df = _sdk_fetch(ido.get_balance_sheet, code_list, sdk_cache_dir, False)
+    tmp_cache = "/tmp/finance_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = _sdk_fetch(ido.get_balance_sheet, code_list, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_balance_sheet 返回空数据，跳过")
         return
@@ -67,7 +74,9 @@ def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "REPORTING_PERIOD") if existing is not None else None
 
-    df = _sdk_fetch(ido.get_cash_flow, code_list, sdk_cache_dir, False)
+    tmp_cache = "/tmp/finance_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = _sdk_fetch(ido.get_cash_flow, code_list, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_cash_flow 返回空数据，跳过")
         return
@@ -86,7 +95,9 @@ def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     existing = load_existing(out_path)
     max_dt = max_date_str(existing, "REPORTING_PERIOD") if existing is not None else None
 
-    df = _sdk_fetch(ido.get_income, code_list, sdk_cache_dir, False)
+    tmp_cache = "/tmp/finance_cache/"
+    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    df = _sdk_fetch(ido.get_income, code_list, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.error("get_income 返回空数据，跳过")
         return
@@ -99,6 +110,15 @@ def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--statement",
+        choices=["balance_sheet", "cash_flow", "income"],
+        default=None,
+        help="拉取指定报表；不传则依次执行全部三张",
+    )
+    args = parser.parse_args()
+
     output_dir = os.environ.get("OUTPUT_DIR", "/volume1/amazingdata/data")
     sdk_cache_dir = os.environ.get("SDK_CACHE_DIR", "/volume1/amazingdata/sdk_cache")
     Path(sdk_cache_dir).mkdir(parents=True, exist_ok=True)
@@ -112,12 +132,19 @@ def main():
     code_list = bdo.get_code_list()
     logger.info(f"获取到 {len(code_list)} 个股票代码")
 
-    errors = []
-    for name, fn in [
+    all_statements = [
         ("balance_sheet", lambda: fetch_balance_sheet(ido, code_list, output_dir, sdk_cache_dir)),
         ("cash_flow",     lambda: fetch_cash_flow(ido, code_list, output_dir, sdk_cache_dir)),
         ("income",        lambda: fetch_income(ido, code_list, output_dir, sdk_cache_dir)),
-    ]:
+    ]
+
+    if args.statement:
+        statements = [(n, fn) for n, fn in all_statements if n == args.statement]
+    else:
+        statements = all_statements
+
+    errors = []
+    for name, fn in statements:
         try:
             fn()
         except Exception as e:
