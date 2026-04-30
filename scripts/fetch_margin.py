@@ -61,8 +61,16 @@ def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: st
     logger.info("=" * 60)
     logger.info("开始拉取 margin_detail_history（增量：追加新 TRADE_DATE 行）")
     out_path = str(Path(output_dir) / "margin_detail_history.parquet")
-    existing = load_existing(out_path)
-    max_dt = max_date_str(existing, "TRADE_DATE") if existing is not None else None
+
+    # Read only the max date from existing file — avoid loading 5M+ rows into RAM
+    # before the SDK call which itself needs ~3GB
+    existing_max_dt = None
+    p = Path(out_path)
+    if p.exists() and p.stat().st_size > 10_000:
+        existing_max_dt = max_date_str(pd.read_parquet(p, columns=["TRADE_DATE"]), "TRADE_DATE")
+        logger.info(f"已有文件最大 TRADE_DATE: {existing_max_dt}")
+    else:
+        logger.info("无已有文件，全量写入")
 
     df = _sdk_fetch(ido.get_margin_detail, code_list, sdk_cache_dir, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
@@ -70,8 +78,29 @@ def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: st
         return
     if isinstance(df, dict):
         df = dict_to_df(df)
+    if df.empty:
+        logger.error("get_margin_detail 返回空 dict（所有股票均无数据），跳过")
+        return
+    logger.info(f"SDK 返回 {len(df):,} 行")
 
-    result = append_new_rows(existing, df, "TRADE_DATE", max_dt)
+    if existing_max_dt is None:
+        result = df.reset_index(drop=True)
+    else:
+        col = df["TRADE_DATE"]
+        if pd.api.types.is_datetime64_any_dtype(col):
+            mask = col.dt.strftime("%Y%m%d") > existing_max_dt
+        else:
+            mask = col.astype(str).str[:8] > existing_max_dt
+        new_rows = df[mask]
+        logger.info(f"增量行数: {len(new_rows):,}（已有最大日期: {existing_max_dt}）")
+        if new_rows.empty:
+            logger.info("无新增行，跳过写入")
+            return
+        # Load existing only now — after SDK call freed its memory
+        existing = pd.read_parquet(p)
+        result = pd.concat([existing, new_rows], ignore_index=True)
+        del existing, new_rows
+
     write_parquet(result, output_dir, "margin_detail_history.parquet")
     logger.info("margin_detail_history 写入完成")
 
