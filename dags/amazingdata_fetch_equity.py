@@ -3,7 +3,7 @@
 amazingdata_fetch_equity.py
 
 DAG: amazingdata_fetch_equity
-Schedule: 工作日 04:30
+Schedule: 工作日 03:30
 
 Tasks:
   fetch_equity — equity_structure_history.parquet（增量）
@@ -45,12 +45,12 @@ default_args = {
 with DAG(
     dag_id="amazingdata_fetch_equity",
     default_args=default_args,
-    schedule="30 4 * * 1-5",
+    schedule="30 3 * * 1-5",
     start_date=datetime(2026, 4, 28),
     catchup=False,
     max_active_runs=1,
     tags=["amazingdata", "equity", "daily"],
-    description="工作日 04:30 拉取 equity_structure_history 和 equity_dividend_history",
+    description="工作日 03:30 拉取 equity_structure_history 和 equity_dividend_history",
 ) as dag:
 
     fetch_equity = BashOperator(
