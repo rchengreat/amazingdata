@@ -1,23 +1,23 @@
 """
-fetch_kline.py — 拉取每日增量行情数据（股票/指数/ETF）
+fetch_kline.py — 拉取每日行情数据（股票/指数/ETF）
 
 输出文件：
-  - extra_stock_{date}.parquet  ← query_kline(EXTRA_STOCK_A_SH_SZ) + backward_factor
+  - extra_stock_{date}.parquet  ← query_kline(EXTRA_STOCK_A) + backward_factor
   - extra_index_{date}.parquet  ← query_kline(EXTRA_INDEX_A_SH_SZ)
   - extra_etf_{date}.parquet    ← query_kline(EXTRA_ETF)
 
-增量模式：
+日期逻辑：
   - 若指定 --date，直接拉该日期
-  - 若不指定，查找 extra_{type}_history.parquet 中最新 kline_time，
-    然后拉 max_date+1 到今天的所有交易日（补漏）
+  - 若不指定，使用今天日期（begin_date = end_date = today）
   - 每天的数据保存为独立的日期文件（monthly_cleanup.py 负责月末合并）
+  - 若当日文件已存在则跳过
 
 运行时间：工作日 15:15 / 15:45 / 16:00
 """
 import os
 import sys
 import argparse
-from datetime import date, timedelta, datetime
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -29,7 +29,6 @@ import AmazingData as ad
 
 from amazingdata_fetcher.client import get_client
 from amazingdata_fetcher.writer import write_parquet
-from amazingdata_fetcher.incremental import load_existing, max_date_str
 
 load_dotenv()
 
@@ -49,56 +48,12 @@ def normalize_kline_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_trade_dates_since(bdo, since_date: str, until_date: str) -> list[str]:
-    """
-    返回 [since_date, until_date] 之间的交易日列表（YYYYMMDD 字符串）。
-    """
-    calendar = bdo.get_calendar()
-    # calendar 是 list/array of date strings or datetime-like
-    result = []
-    for d in calendar:
-        d_str = str(d)[:10].replace("-", "")  # 统一为 YYYYMMDD
-        if since_date <= d_str <= until_date:
-            result.append(d_str)
-    return sorted(result)
+def fetch_stock(bdo, mdo, trade_date: str, output_dir: str):
+    out_path = Path(output_dir) / f"extra_stock_{trade_date}.parquet"
+    if out_path.exists():
+        logger.info(f"extra_stock_{trade_date}.parquet 已存在，跳过")
+        return
 
-
-def pending_dates(bdo, ktype: str, output_dir: str, until_date: str) -> list[str]:
-    """
-    根据 extra_{ktype}_history.parquet 的最新日期和已有日期文件，
-    计算出需要补拉的交易日列表。
-    """
-    # 先看 history 文件的最新日期
-    history_path = str(Path(output_dir) / f"extra_{ktype}_history.parquet")
-    existing = load_existing(history_path)
-    max_dt = max_date_str(existing, "kline_time") if existing is not None else None
-
-    if max_dt is None:
-        # 没有历史文件，只拉 until_date 当天
-        logger.info(f"无历史文件，仅拉取 {until_date}")
-        return [until_date]
-
-    # since = max_dt 的下一个交易日（不含 max_dt 当天，已有）
-    # 先找出 max_dt+1 到 until_date 的交易日
-    next_day = (datetime.strptime(max_dt, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
-    if next_day > until_date:
-        logger.info(f"历史已是最新（{max_dt}），无需拉取")
-        return []
-
-    all_pending = get_trade_dates_since(bdo, next_day, until_date)
-
-    # 排除已经存在的日期文件（可能上次漏合并的）
-    missing = []
-    for d in all_pending:
-        daily_path = Path(output_dir) / f"extra_{ktype}_{d}.parquet"
-        if not daily_path.exists():
-            missing.append(d)
-
-    logger.info(f"需要补拉的交易日: {missing}")
-    return missing
-
-
-def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
     logger.info(f"拉取 extra_stock_{trade_date}...")
     code_list = bdo.get_code_list("EXTRA_STOCK_A")
     logger.info(f"股票代码数: {len(code_list)}")
@@ -113,10 +68,9 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
         logger.warning(f"query_kline EXTRA_STOCK_A {trade_date} 返回空（非交易日？）")
         return
     df = dict_to_df(df_kline)
-    logger.info(f"query_kline 返回 {len(df)} 行")
+    logger.info(f"query_kline 返回 {len(df):,} 行")
 
-    # 与 extract_ad_stock.ipynb 完全一致：实时下载当日复权因子后按日期过滤合并
-    # 不依赖 info_stock_factor.parquet 是否存在，确保因子数据与行情同步
+    # 实时下载当日复权因子后按日期过滤合并
     logger.info(f"下载复权因子（全量，过滤 {trade_date}）...")
     tmp_cache = "/tmp/kline_factor_cache/"
     Path(tmp_cache).mkdir(parents=True, exist_ok=True)
@@ -124,14 +78,11 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
     if df_factor is not None and not df_factor.empty:
         df_factor = df_factor.unstack().reset_index()
         df_factor.columns = ["instrument", "datetime", "backward_factor"]
-        # 过滤当日
         begin_idx = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
-        end_idx = begin_idx
-        df_factor = df_factor[df_factor["datetime"].between(begin_idx, end_idx)].copy()
+        df_factor = df_factor[df_factor["datetime"].between(begin_idx, begin_idx)].copy()
         df_factor.columns = ["code", "kline_time", "backward_factor"]
-        # 统一类型确保 merge key 匹配
         df_factor["kline_time"] = pd.to_datetime(df_factor["kline_time"]).astype("datetime64[ns]")
-        logger.info(f"复权因子过滤后 {len(df_factor)} 行（{begin_idx}）")
+        logger.info(f"复权因子过滤后 {len(df_factor):,} 行（{begin_idx}）")
         df = pd.merge(df, df_factor, on=["kline_time", "code"], how="left")
         if df["backward_factor"].isnull().all():
             logger.warning(f"复权因子中无 {begin_idx} 数据，backward_factor 留空")
@@ -142,10 +93,15 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str, sdk_cache_dir: str):
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_stock_{trade_date}.parquet")
-    logger.info(f"extra_stock_{trade_date}.parquet 写入完成，共 {len(df)} 行")
+    logger.info(f"extra_stock_{trade_date}.parquet 写入完成: {out_path} ({len(df):,} 行)")
 
 
 def fetch_index(bdo, mdo, trade_date: str, output_dir: str):
+    out_path = Path(output_dir) / f"extra_index_{trade_date}.parquet"
+    if out_path.exists():
+        logger.info(f"extra_index_{trade_date}.parquet 已存在，跳过")
+        return
+
     logger.info(f"拉取 extra_index_{trade_date}...")
     code_list = bdo.get_code_list("EXTRA_INDEX_A_SH_SZ")
     logger.info(f"指数代码数: {len(code_list)}")
@@ -156,16 +112,22 @@ def fetch_index(bdo, mdo, trade_date: str, output_dir: str):
         period=ad.constant.Period.day.value,
     )
     if not df_kline:
-        logger.warning(f"query_kline EXTRA_INDEX_A_SH_SZ {trade_date} 返回空")
+        logger.warning(f"query_kline EXTRA_INDEX_A_SH_SZ {trade_date} 返回空（非交易日？）")
         return
     df = dict_to_df(df_kline)
+    logger.info(f"query_kline 返回 {len(df):,} 行")
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_index_{trade_date}.parquet")
-    logger.info(f"extra_index_{trade_date}.parquet 写入完成，共 {len(df)} 行")
+    logger.info(f"extra_index_{trade_date}.parquet 写入完成: {out_path} ({len(df):,} 行)")
 
 
 def fetch_etf(bdo, mdo, trade_date: str, output_dir: str):
+    out_path = Path(output_dir) / f"extra_etf_{trade_date}.parquet"
+    if out_path.exists():
+        logger.info(f"extra_etf_{trade_date}.parquet 已存在，跳过")
+        return
+
     logger.info(f"拉取 extra_etf_{trade_date}...")
     code_list = bdo.get_code_list("EXTRA_ETF")
     logger.info(f"ETF 代码数: {len(code_list)}")
@@ -176,18 +138,19 @@ def fetch_etf(bdo, mdo, trade_date: str, output_dir: str):
         period=ad.constant.Period.day.value,
     )
     if not df_kline:
-        logger.warning(f"query_kline EXTRA_ETF {trade_date} 返回空")
+        logger.warning(f"query_kline EXTRA_ETF {trade_date} 返回空（非交易日？）")
         return
     df = dict_to_df(df_kline)
+    logger.info(f"query_kline 返回 {len(df):,} 行")
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)
     write_parquet(df, output_dir, f"extra_etf_{trade_date}.parquet")
-    logger.info(f"extra_etf_{trade_date}.parquet 写入完成，共 {len(df)} 行")
+    logger.info(f"extra_etf_{trade_date}.parquet 写入完成: {out_path} ({len(df):,} 行)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="拉取每日增量行情数据")
-    parser.add_argument("--date", default=None, help="交易日期 YYYYMMDD，默认自动检测增量")
+    parser = argparse.ArgumentParser(description="拉取每日行情数据")
+    parser.add_argument("--date", default=None, help="交易日期 YYYYMMDD，默认今天")
     parser.add_argument(
         "--type",
         choices=["stock", "index", "etf", "all"],
@@ -196,12 +159,12 @@ def main():
     )
     args = parser.parse_args()
 
-    today = date.today().strftime("%Y%m%d")
+    trade_date = args.date if args.date else date.today().strftime("%Y%m%d")
     output_dir = os.environ.get("OUTPUT_DIR", "/volume1/amazingdata/data")
     sdk_cache_dir = os.environ.get("SDK_CACHE_DIR", "/volume1/amazingdata/sdk_cache")
     Path(sdk_cache_dir).mkdir(parents=True, exist_ok=True)
 
-    logger.info("登录 AmazingData...")
+    logger.info(f"登录 AmazingData... 拉取日期: {trade_date}")
     get_client()
 
     bdo = ad.BaseData()
@@ -211,22 +174,12 @@ def main():
     ktypes = ["stock", "index", "etf"] if args.type == "all" else [args.type]
 
     for ktype in ktypes:
-        if args.date:
-            dates_to_fetch = [args.date]
-        else:
-            dates_to_fetch = pending_dates(bdo, ktype, output_dir, today)
-
-        if not dates_to_fetch:
-            logger.info(f"{ktype}: 已是最新，跳过")
-            continue
-
-        for trade_date in dates_to_fetch:
-            if ktype == "stock":
-                fetch_stock(bdo, mdo, trade_date, output_dir, sdk_cache_dir)
-            elif ktype == "index":
-                fetch_index(bdo, mdo, trade_date, output_dir)
-            elif ktype == "etf":
-                fetch_etf(bdo, mdo, trade_date, output_dir)
+        if ktype == "stock":
+            fetch_stock(bdo, mdo, trade_date, output_dir)
+        elif ktype == "index":
+            fetch_index(bdo, mdo, trade_date, output_dir)
+        elif ktype == "etf":
+            fetch_etf(bdo, mdo, trade_date, output_dir)
 
     logger.info("fetch_kline.py 全部完成")
 

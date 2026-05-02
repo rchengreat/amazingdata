@@ -66,7 +66,7 @@ def merge_and_cleanup(data_type: str, month_str: str, output_dir: str):
     else:
         df_combined = df_new
 
-    write_parquet(df_combined, output_dir, f"extra_{data_type}_history")
+    write_parquet(df_combined, output_dir, f"extra_{data_type}_history.parquet")
     logger.info(f"历史文件已写入：{history_file}（共 {len(df_combined)} 行）")
 
     # 删除当月日文件

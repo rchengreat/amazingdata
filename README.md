@@ -83,16 +83,16 @@ amazingdata/
 
 ## 脚本说明与调度时间
 
-| 脚本 | 输出文件 | 调度（工作日） |
-|------|---------|--------------|
-| `fetch_stock_info.py` | `info_stock_basic.parquet`<br>`info_stock_factor.parquet` | 03:00 |
-| `fetch_index_info.py` | `info_index_detail_history.parquet`<br>`info_index_weight_history.parquet` | 03:30 |
-| `fetch_industry_info.py` | `info_industry_basic_history.parquet`<br>`info_industry_detail_history.parquet` | 03:30 |
-| `fetch_equity.py` | `equity_structure_history.parquet`<br>`equity_dividend_history.parquet` | 04:30 |
-| `fetch_finance.py` | `finance_balance_sheet_history.parquet`<br>`finance_cash_flow_history.parquet`<br>`finance_income_history.parquet` | 05:00 |
-| `fetch_kline.py` | `extra_stock_{date}.parquet`<br>`extra_index_{date}.parquet`<br>`extra_etf_{date}.parquet` | 15:15 |
-| `fetch_margin.py` | `margin_summary_history.parquet`<br>`margin_detail_history.parquet` | 16:15 |
-| `monthly_cleanup.py` | 合并 → `extra_{type}_history.parquet` | 每月 2 日 01:00 |
+| 脚本                       | 输出文件                                                                                                               | 调度（工作日）      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------ |
+| `fetch_equity.py`        | `equity_structure_history.parquet`<br>`equity_dividend_history.parquet`                                            | 03:30        |
+| `fetch_finance.py`       | `finance_balance_sheet_history.parquet`<br>`finance_cash_flow_history.parquet`<br>`finance_income_history.parquet` | 05:00        |
+| `fetch_stock_info.py`    | `info_stock_basic.parquet`<br>`info_stock_factor.parquet`                                                          | 15:20        |
+| `fetch_index_info.py`    | `info_index_detail_history.parquet`<br>`info_index_weight_history.parquet`                                         | 15:30        |
+| `fetch_industry_info.py` | `info_industry_basic_history.parquet`<br>`info_industry_detail_history.parquet`                                    | 14:30        |
+| `fetch_kline.py`         | `extra_stock_{date}.parquet`<br>`extra_index_{date}.parquet`<br>`extra_etf_{date}.parquet`                         | 15:45        |
+| `fetch_margin.py`        | `margin_summary_history.parquet`<br>`margin_detail_history.parquet`                                                | 15:45        |
+| `monthly_cleanup.py`     | 合并 → `extra_{type}_history.parquet`                                                                                | 每月 2 日 01:00 |
 
 ### 增量策略说明
 
@@ -100,8 +100,10 @@ amazingdata/
 - **info_stock_factor**：每次全量下载宽表并覆写，因为复权因子会对历史日期溯源调整。若文件已在今日 15:30 后写入则跳过。
 - **info_index_detail / info_industry_detail**：追加比已有文件 `INDATE` 更新的行。
 - **info_index_weight**：追加比已有文件 `TRADE_DATE` 更新的行，逐个代码调用（规避 SDK bug）。
-- **finance / equity / margin**：追加比已有文件日期列更新的行。
-- **kline**：每天输出独立的日期文件，`monthly_cleanup.py` 月初合并为 `history` 文件。
+- **equity**:  Full download + overwrite every run using only code_list, local_path, is_local
+- **finance**：Full download every run, client-side filter using `_min_max_date_per_code()` — takes the minimum of each company's max date as the cutoff, so companies that haven't filed the latest quarter yet are still included
+- **margin**: 追加比已有文件 `TRADE_DATE` 更新的数据
+- **kline**：每天输出独立的日期文件(begin_date = end_date = today)，`monthly_cleanup.py` 月初合并为 `history` 文件。
 
 ---
 
@@ -277,24 +279,3 @@ git push
 
 ---
 
-## 常见问题
-
-**Q：复权因子文件体积异常偏大？**  
-A：确认 `fetch_stock_info.py` 中 `get_backward_factor` 传入的 `local_path` 参数是 `output_dir`（数据目录），而非 `sdk_cache_dir`。与 `extract_ad_stock.ipynb` 完全一致。
-
-**Q：`fetch_kline.py` 中 `backward_factor` 全为 NaN？**  
-A：`fetch_kline.py` 现在在生成每日行情时实时下载复权因子（不依赖 `info_stock_factor.parquet`），与 notebook 逻辑完全一致。若仍为 NaN，检查 `get_backward_factor` 是否成功返回当日数据。
-
-**Q：DAG 在 Airflow 中不出现？**  
-A：确认 `/volume1/amazingdata/project/dags/` 目录存在且有 DAG 文件，且 docker-compose 已重启使新挂载卷生效。查看 `airflow-dag-processor` 容器日志排查 import 错误。
-
-**Q：`BashOperator` 执行 `docker run` 权限被拒？**  
-A：确认 docker-compose 中挂载了 `/var/run/docker.sock`，且 Airflow 容器用户有 docker socket 访问权限（通常需要将用户加入 docker 组，或调整 socket 权限）。
-
-**Q：SDK `is_local=True` 导致路径错误？**  
-A：所有 `ido.*` 调用必须显式传 `is_local=False`，否则 SDK 会尝试读取 Windows 本地路径 `D://AmazingData_local_data//` 而失败。
-
----
-
-**版本**：v2.0  
-**更新时间**：2026-04-28
