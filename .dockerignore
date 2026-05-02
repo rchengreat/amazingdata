@@ -1,0 +1,12 @@
+sdk_cache/
+data/
+logs/
+.env
+wheel/
+venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.obsidian/
+.claude/
+*.log
