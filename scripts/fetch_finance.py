@@ -12,7 +12,8 @@ fetch_finance.py — 拉取三张财务报表（增量模式）
   确保不遗漏尚未提交最新季报的公司。
 
 用法：
-  python3 fetch_finance.py --statement balance_sheet|cash_flow|income
+  python3 scripts/fetch_finance.py --statement balance_sheet|cash_flow|income
+  python3 scripts/fetch_finance.py --statement balance_sheet --test-codes 000001.SZ,000002.SZ,000003.SZ,030000.SZ
 
 运行时间：工作日 05:00 / 06:00 / 07:00
 """
@@ -74,9 +75,8 @@ def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: st
     cutoff_dt = _min_max_date_per_code(existing, "REPORTING_PERIOD")
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
-    tmp_cache = os.path.join(sdk_cache_dir, "balance_sheet")
-    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
-    df = _sdk_fetch(ido.get_balance_sheet, code_list, tmp_cache, False)
+    tmp_cache = sdk_cache_dir
+    df = _sdk_fetch(ido.get_balance_sheet, code_list, tmp_cache, True)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_balance_sheet 返回空数据，跳过")
         return
@@ -100,9 +100,8 @@ def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     cutoff_dt = _min_max_date_per_code(existing, "REPORTING_PERIOD")
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
-    tmp_cache = os.path.join(sdk_cache_dir, "cash_flow")
-    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
-    df = _sdk_fetch(ido.get_cash_flow, code_list, tmp_cache, False)
+    tmp_cache = sdk_cache_dir
+    df = _sdk_fetch(ido.get_cash_flow, code_list, tmp_cache, True)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_cash_flow 返回空数据，跳过")
         return
@@ -126,9 +125,8 @@ def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     cutoff_dt = _min_max_date_per_code(existing, "REPORTING_PERIOD")
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
-    tmp_cache = os.path.join(sdk_cache_dir, "income")
-    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
-    df = _sdk_fetch(ido.get_income, code_list, tmp_cache, False)
+    tmp_cache = sdk_cache_dir
+    df = _sdk_fetch(ido.get_income, code_list, tmp_cache, True)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_income 返回空数据，跳过")
         return
