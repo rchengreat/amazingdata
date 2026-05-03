@@ -101,8 +101,8 @@ amazingdata/
 - **info_index_detail / info_industry_detail**：追加比已有文件 `INDATE` 更新的行。
 - **info_index_weight**：追加比已有文件 `TRADE_DATE` 更新的行，逐个代码调用（规避 SDK bug）。
 - **equity**:  Full download + overwrite every run using only code_list, local_path, is_local
-- **finance**：Full download every run, client-side filter using `_min_max_date_per_code()` — takes the minimum of each company's max date as the cutoff, so companies that haven't filed the latest quarter yet are still included
-- **margin**: 追加比已有文件 `TRADE_DATE` 更新的数据
+- **finance**：使用code_list = `全量股票`, local_path = '/volume1/amazingdata/sdk_cache/infodata/', is_local = TRUE，进行增量获取
+- **margin**: 使用code_list = `全量股票 - 剔除列表`, local_path = '/volume1/amazingdata/sdk_cache/infodata/', is_local = TRUE，进行增量获取
 - **kline**：每天输出独立的日期文件(begin_date = end_date = today)，`monthly_cleanup.py` 月初合并为 `history` 文件。
 
 ---

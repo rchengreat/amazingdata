@@ -112,6 +112,20 @@ def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: st
     logger.info("margin_detail_history 写入完成")
 
 
+def load_exclusion_list(output_dir: str) -> set:
+    csv_path = Path(output_dir) / "no_margin_stock_list.csv"
+    if not csv_path.exists():
+        logger.warning(f"排除清单文件不存在: {csv_path}，跳过过滤")
+        return set()
+    df = pd.read_csv(csv_path, dtype=str)
+    if "stock_code" not in df.columns:
+        logger.warning(f"排除清单文件缺少 stock_code 列: {csv_path}，跳过过滤")
+        return set()
+    codes = set(df["stock_code"].str.strip())
+    logger.info(f"排除清单: {len(codes)} 只股票（{csv_path}）")
+    return codes
+
+
 def main():
     output_dir = os.environ.get("OUTPUT_DIR", "/volume1/amazingdata/data")
     sdk_cache_dir = os.environ.get("SDK_CACHE_DIR", "/volume1/amazingdata/sdk_cache")
@@ -125,6 +139,11 @@ def main():
 
     code_list = bdo.get_code_list()
     logger.info(f"获取到 {len(code_list)} 个股票代码")
+
+    exclusion = load_exclusion_list(output_dir)
+    if exclusion:
+        code_list = [c for c in code_list if c not in exclusion]
+        logger.info(f"排除 {len(exclusion)} 只后，剩余 {len(code_list)} 只股票代码")
 
     errors = []
     for name, fn in [
