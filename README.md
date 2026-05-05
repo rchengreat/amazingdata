@@ -55,31 +55,6 @@ amazingdata/
 
 ---
 
-## 环境信息
-
-| 项目 | 值 |
-|------|-----|
-| NAS 型号 | Synology D923+ |
-| NAS 局域网 IP | `192.168.100.15` |
-| NAS Tailscale IP | `100.126.211.115` |
-| SSH 用户 | `13817878619` |
-| SSH/sudo 密码 | `Half2@100!` |
-| 数据输出目录 | `/volume1/amazingdata/data/` |
-| SDK 缓存目录 | `/volume1/amazingdata/sdk_cache/` |
-| Docker 镜像 | `amazingdata-fetcher:latest` |
-| Airflow Web UI（局域网） | `http://192.168.100.15:8080` |
-| Airflow Web UI（Tailscale） | `http://100.126.211.115:8080` |
-
-### AmazingData SDK 凭证
-
-| 项目 | 值 |
-|------|-----|
-| `AD_HOST` | `101.230.159.234` |
-| `AD_PORT` | `8600` |
-| `AD_USERNAME` | `10100214892` |
-| `AD_PASSWORD` | `rChen2025@tgwAmazing` |
-
----
 
 ## 脚本说明与调度时间
 

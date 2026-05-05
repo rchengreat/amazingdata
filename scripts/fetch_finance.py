@@ -76,7 +76,7 @@ def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: st
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
     tmp_cache = sdk_cache_dir
-    df = _sdk_fetch(ido.get_balance_sheet, code_list, tmp_cache, True)
+    df = _sdk_fetch(ido.get_balance_sheet, code_list, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_balance_sheet 返回空数据，跳过")
         return
@@ -101,7 +101,7 @@ def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
     tmp_cache = sdk_cache_dir
-    df = _sdk_fetch(ido.get_cash_flow, code_list, tmp_cache, True)
+    df = _sdk_fetch(ido.get_cash_flow, code_list, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_cash_flow 返回空数据，跳过")
         return
@@ -126,7 +126,7 @@ def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
     tmp_cache = sdk_cache_dir
-    df = _sdk_fetch(ido.get_income, code_list, tmp_cache, True)
+    df = _sdk_fetch(ido.get_income, code_list, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_income 返回空数据，跳过")
         return

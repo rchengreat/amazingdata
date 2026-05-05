@@ -52,7 +52,7 @@ def fetch_margin_summary(ido, output_dir: str, sdk_cache_dir: str):
     max_dt = max_date_str(existing, "TRADE_DATE") if existing is not None else None
 
     tmp_cache = sdk_cache_dir
-    df = _sdk_fetch(ido.get_margin_summary, tmp_cache, True)
+    df = _sdk_fetch(ido.get_margin_summary, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_margin_summary 返回空数据，跳过")
         return
@@ -82,7 +82,7 @@ def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: st
         logger.info("无已有文件，全量写入")
 
     tmp_cache = sdk_cache_dir
-    df = _sdk_fetch(ido.get_margin_detail, code_list, tmp_cache, True)
+    df = _sdk_fetch(ido.get_margin_detail, code_list, tmp_cache, False)
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_margin_detail 返回空数据，跳过")
         return
