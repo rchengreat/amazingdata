@@ -27,17 +27,27 @@ import AmazingData as ad
 from amazingdata_fetcher.client import get_client
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, new_codes
+from amazingdata_fetcher.monitor import SystemMonitor
 
 load_dotenv()
 
+CST_OFFSET = dt.timedelta(hours=8)
 
-def fetch_stock_basic(bdo, ido, output_dir: str):
+
+def _now_cst():
+    return dt.datetime.utcnow() + CST_OFFSET
+
+
+def fetch_stock_basic(bdo, ido, output_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
     logger.info("开始拉取 info_stock_basic（增量：仅新上市代码）")
     out_path = str(Path(output_dir) / "info_stock_basic.parquet")
     existing = load_existing(out_path)
 
+    mon.snapshot("stock_basic_start")
+    logger.info("调用 bdo.get_code_list()...")
     all_codes = bdo.get_code_list()
+    mon.snapshot("stock_basic_after_get_code_list")
     logger.info(f"全量代码数: {len(all_codes)}")
 
     delta_codes = new_codes(existing, all_codes, code_col="MARKET_CODE")
@@ -46,7 +56,9 @@ def fetch_stock_basic(bdo, ido, output_dir: str):
         return
 
     logger.info(f"新增代码数: {len(delta_codes)}，开始拉取...")
+    mon.snapshot("stock_basic_before_get_stock_basic")
     df_new = ido.get_stock_basic(delta_codes)
+    mon.snapshot("stock_basic_after_get_stock_basic")
     if df_new is None or (isinstance(df_new, pd.DataFrame) and df_new.empty):
         logger.warning("get_stock_basic 返回空数据")
         return
@@ -64,7 +76,7 @@ def fetch_stock_basic(bdo, ido, output_dir: str):
     logger.info("info_stock_basic 写入完成")
 
 
-def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
+def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     """
     与 extract_ad_stock.ipynb 使用完全相同的逻辑：
       1. get_code_list('EXTRA_STOCK_A')
@@ -72,7 +84,8 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
       3. unstack().reset_index()，columns = ['instrument', 'datetime', 'backward_factor']
       4. 全量覆写（zstd 压缩）
 
-    跳过条件：文件已在今日 15:30 后写入（当日收盘后已是最新）。
+    跳过条件：文件已在今日 15:30 CST 后写入（当日收盘后已是最新）。
+    Docker 容器时区为 UTC，需手动偏移 +8 小时。
     """
     logger.info("=" * 60)
     logger.info("开始拉取 info_stock_factor（全量覆写，get_backward_factor）")
@@ -80,37 +93,45 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
 
     if out_path.exists():
         mtime = dt.datetime.fromtimestamp(out_path.stat().st_mtime)
-        market_close_today = dt.datetime.combine(dt.date.today(), dt.time(15, 30))
+        now_cst = _now_cst()
+        market_close_today = dt.datetime.combine(now_cst.date(), dt.time(15, 30))
         if mtime >= market_close_today:
             logger.info(
                 f"info_stock_factor 已在今日 {mtime.strftime('%H:%M')} 收盘后写入，跳过下载"
             )
             return
 
-    # 与 notebook 完全一致：传入 output_dir 作为 local_path
+    mon.snapshot("stock_factor_before_get_code_list")
+    logger.info("调用 bdo.get_code_list('EXTRA_STOCK_A')...")
     code_list = bdo.get_code_list("EXTRA_STOCK_A")
+    mon.snapshot("stock_factor_after_get_code_list")
     logger.info(f"股票代码数: {len(code_list)}，开始下载复权因子（全量，约 4500 万行）...")
 
     tmp_cache = "/tmp/stock_factor_cache/"
     Path(tmp_cache).mkdir(parents=True, exist_ok=True)
+    mon.snapshot("stock_factor_before_get_backward_factor")
+    logger.info("调用 bdo.get_backward_factor()...")
     df_factor = bdo.get_backward_factor(code_list, local_path=tmp_cache, is_local=False)
+    mon.snapshot("stock_factor_after_get_backward_factor")
     if df_factor is None or df_factor.empty:
         logger.error("get_backward_factor 返回空数据")
         return
 
     logger.info(f"原始宽表: {df_factor.shape}，开始 unstack 转换为长表...")
 
-    # 与 notebook 完全一致的转换逻辑
     df_factor = df_factor.unstack().reset_index()
     df_factor.columns = ["instrument", "datetime", "backward_factor"]
+    mon.snapshot("stock_factor_after_unstack")
 
     logger.info(
         f"长表行数: {len(df_factor)}，"
         f"日期范围: {df_factor['datetime'].min()} ~ {df_factor['datetime'].max()}"
     )
 
-    # 校验最新日期（参考 notebook 的校验逻辑）
+    mon.snapshot("stock_factor_before_get_calendar")
+    logger.info("调用 bdo.get_calendar() 校验日期...")
     calendar = bdo.get_calendar()
+    mon.snapshot("stock_factor_after_get_calendar")
     today_str = str(calendar[-1])
     max_dt_str = pd.to_datetime(df_factor["datetime"].max()).strftime("%Y%m%d")
     if max_dt_str != today_str:
@@ -119,6 +140,7 @@ def fetch_stock_factor(bdo, output_dir: str, sdk_cache_dir: str):
         logger.info(f"复权因子日期校验通过: {max_dt_str}")
 
     write_parquet(df_factor, output_dir, "info_stock_factor.parquet")
+    mon.snapshot("stock_factor_done")
     logger.info("info_stock_factor 写入完成")
 
 
@@ -127,16 +149,32 @@ def main():
     sdk_cache_dir = os.environ.get("SDK_CACHE_DIR", "/volume1/amazingdata/sdk_cache")
     Path(sdk_cache_dir).mkdir(parents=True, exist_ok=True)
 
+    mon = SystemMonitor()
+    mon.snapshot("startup")
+
     logger.info("登录 AmazingData...")
     get_client()
+    mon.snapshot("after_login")
 
     bdo = ad.BaseData()
     ido = ad.InfoData()
 
-    fetch_stock_basic(bdo, ido, output_dir)
-    fetch_stock_factor(bdo, output_dir, sdk_cache_dir)
+    errors = []
+    for name, fn in [
+        ("stock_basic", lambda: fetch_stock_basic(bdo, ido, output_dir, mon)),
+        ("stock_factor", lambda: fetch_stock_factor(bdo, output_dir, sdk_cache_dir, mon)),
+    ]:
+        try:
+            fn()
+        except Exception as e:
+            logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
+            mon.snapshot(f"{name}_error")
+            errors.append(name)
 
+    if errors:
+        raise RuntimeError(f"以下数据拉取失败: {errors}")
     logger.info("fetch_stock_info.py 全部完成")
+    os._exit(0)
 
 
 if __name__ == "__main__":

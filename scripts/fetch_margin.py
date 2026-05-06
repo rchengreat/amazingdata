@@ -25,6 +25,7 @@ import AmazingData as ad
 from amazingdata_fetcher.client import get_client
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, max_date_str, append_new_rows
+from amazingdata_fetcher.monitor import SystemMonitor
 
 load_dotenv()
 
@@ -44,7 +45,7 @@ def _sdk_fetch(fn, *args):
         return None
 
 
-def fetch_margin_summary(ido, output_dir: str, sdk_cache_dir: str):
+def fetch_margin_summary(ido, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
     logger.info("开始拉取 margin_summary_history（增量：追加新 TRADE_DATE 行）")
     out_path = str(Path(output_dir) / "margin_summary_history.parquet")
@@ -52,7 +53,9 @@ def fetch_margin_summary(ido, output_dir: str, sdk_cache_dir: str):
     max_dt = max_date_str(existing, "TRADE_DATE") if existing is not None else None
 
     tmp_cache = sdk_cache_dir
+    mon.snapshot("margin_summary_before_sdk")
     df = _sdk_fetch(ido.get_margin_summary, tmp_cache, False)
+    mon.snapshot("margin_summary_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_margin_summary 返回空数据，跳过")
         return
@@ -67,7 +70,7 @@ def fetch_margin_summary(ido, output_dir: str, sdk_cache_dir: str):
     logger.info("margin_summary_history 写入完成")
 
 
-def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
+def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
     logger.info("开始拉取 margin_detail_history（增量：追加新 TRADE_DATE 行）")
     out_path = Path(output_dir) / "margin_detail_history.parquet"
@@ -82,7 +85,9 @@ def fetch_margin_detail(ido, code_list: list, output_dir: str, sdk_cache_dir: st
         logger.info("无已有文件，全量写入")
 
     tmp_cache = sdk_cache_dir
+    mon.snapshot("margin_detail_before_sdk")
     df = _sdk_fetch(ido.get_margin_detail, code_list, tmp_cache, False)
+    mon.snapshot("margin_detail_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_margin_detail 返回空数据，跳过")
         return
@@ -131,8 +136,12 @@ def main():
     sdk_cache_dir = os.environ.get("SDK_CACHE_DIR", "/volume1/amazingdata/sdk_cache")
     Path(sdk_cache_dir).mkdir(parents=True, exist_ok=True)
 
+    mon = SystemMonitor()
+    mon.snapshot("startup")
+
     logger.info("登录 AmazingData...")
     get_client()
+    mon.snapshot("after_login")
 
     bdo = ad.BaseData()
     ido = ad.InfoData()
@@ -147,13 +156,14 @@ def main():
 
     errors = []
     for name, fn in [
-        ("margin_summary", lambda: fetch_margin_summary(ido, output_dir, sdk_cache_dir)),
-        ("margin_detail",  lambda: fetch_margin_detail(ido, code_list, output_dir, sdk_cache_dir)),
+        ("margin_summary", lambda: fetch_margin_summary(ido, output_dir, sdk_cache_dir, mon)),
+        ("margin_detail",  lambda: fetch_margin_detail(ido, code_list, output_dir, sdk_cache_dir, mon)),
     ]:
         try:
             fn()
         except Exception as e:
             logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
+            mon.snapshot(f"{name}_error")
             errors.append(name)
 
     if errors:

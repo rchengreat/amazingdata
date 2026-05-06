@@ -32,6 +32,7 @@ import AmazingData as ad
 from amazingdata_fetcher.client import get_client
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, max_date_str, append_new_rows
+from amazingdata_fetcher.monitor import SystemMonitor
 
 load_dotenv()
 
@@ -44,9 +45,6 @@ def dict_to_df(d: dict) -> pd.DataFrame:
 
 
 def _min_max_date_per_code(existing: pd.DataFrame, date_col: str, code_col: str = "MARKET_CODE") -> str:
-    """Return the minimum of each company's max reporting date.
-    Using min-of-max ensures we re-fetch any company that hasn't yet filed
-    for the latest quarter present in other companies' data."""
     if existing is None:
         return None
     if code_col not in existing.columns:
@@ -59,7 +57,6 @@ def _min_max_date_per_code(existing: pd.DataFrame, date_col: str, code_col: str 
 
 
 def _sdk_fetch(fn, *args):
-    """Call an SDK method and return the DataFrame, or None on error."""
     try:
         return fn(*args)
     except Exception as e:
@@ -67,7 +64,7 @@ def _sdk_fetch(fn, *args):
         return None
 
 
-def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
+def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
     logger.info("开始拉取 finance_balance_sheet_history（增量：追加新 REPORTING_PERIOD 行）")
     out_path = str(Path(output_dir) / "finance_balance_sheet_history.parquet")
@@ -76,7 +73,9 @@ def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: st
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
     tmp_cache = sdk_cache_dir
+    mon.snapshot("balance_sheet_before_sdk")
     df = _sdk_fetch(ido.get_balance_sheet, code_list, tmp_cache, False)
+    mon.snapshot("balance_sheet_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_balance_sheet 返回空数据，跳过")
         return
@@ -92,7 +91,7 @@ def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: st
     logger.info(f"finance_balance_sheet_history 写入完成: {out_path} ({len(result):,} 行)")
 
 
-def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
+def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
     logger.info("开始拉取 finance_cash_flow_history（增量：追加新 REPORTING_PERIOD 行）")
     out_path = str(Path(output_dir) / "finance_cash_flow_history.parquet")
@@ -101,7 +100,9 @@ def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
     tmp_cache = sdk_cache_dir
+    mon.snapshot("cash_flow_before_sdk")
     df = _sdk_fetch(ido.get_cash_flow, code_list, tmp_cache, False)
+    mon.snapshot("cash_flow_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_cash_flow 返回空数据，跳过")
         return
@@ -117,7 +118,7 @@ def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     logger.info(f"finance_cash_flow_history 写入完成: {out_path} ({len(result):,} 行)")
 
 
-def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
+def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
     logger.info("开始拉取 finance_income_history（增量：追加新 REPORTING_PERIOD 行）")
     out_path = str(Path(output_dir) / "finance_income_history.parquet")
@@ -126,7 +127,9 @@ def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str):
     logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
     tmp_cache = sdk_cache_dir
+    mon.snapshot("income_before_sdk")
     df = _sdk_fetch(ido.get_income, code_list, tmp_cache, False)
+    mon.snapshot("income_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_income 返回空数据，跳过")
         return
@@ -162,8 +165,12 @@ def main():
     sdk_cache_dir = os.environ.get("SDK_CACHE_DIR", "/volume1/amazingdata/sdk_cache")
     Path(sdk_cache_dir).mkdir(parents=True, exist_ok=True)
 
+    mon = SystemMonitor()
+    mon.snapshot("startup")
+
     logger.info("登录 AmazingData...")
     get_client()
+    mon.snapshot("after_login")
 
     bdo = ad.BaseData()
     ido = ad.InfoData()
@@ -176,9 +183,9 @@ def main():
         logger.info(f"获取到 {len(code_list)} 个股票代码")
 
     all_statements = [
-        ("balance_sheet", lambda: fetch_balance_sheet(ido, code_list, output_dir, sdk_cache_dir)),
-        ("cash_flow",     lambda: fetch_cash_flow(ido, code_list, output_dir, sdk_cache_dir)),
-        ("income",        lambda: fetch_income(ido, code_list, output_dir, sdk_cache_dir)),
+        ("balance_sheet", lambda: fetch_balance_sheet(ido, code_list, output_dir, sdk_cache_dir, mon)),
+        ("cash_flow",     lambda: fetch_cash_flow(ido, code_list, output_dir, sdk_cache_dir, mon)),
+        ("income",        lambda: fetch_income(ido, code_list, output_dir, sdk_cache_dir, mon)),
     ]
 
     if args.statement:
@@ -192,6 +199,7 @@ def main():
             fn()
         except Exception as e:
             logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
+            mon.snapshot(f"{name}_error")
             errors.append(name)
 
     if errors:
