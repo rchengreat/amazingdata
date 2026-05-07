@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 
-_NAS_STATS = 'echo "=== NAS Stats ===" && date && cat /proc/meminfo | grep -E "MemTotal|MemAvailable" && cat /proc/net/dev | grep -v "lo:" && df -h /volume1'
+_NAS_STATS = 'echo "=== NAS Stats ==="; date; cat /proc/meminfo | grep -E "MemTotal|MemAvailable"; cat /proc/net/dev | grep -v "lo:"; df -h /volume1 2>/dev/null || true'
 
 _DOCKER_BASE = (
     "/usr/local/bin/docker run --rm "
@@ -60,7 +60,7 @@ with DAG(
     fetch_balance_sheet = BashOperator(
         task_id="fetch_balance_sheet",
         bash_command=(
-            _NAS_STATS + " && "
+            _NAS_STATS + "; "
             + _DOCKER_BASE.format(statement="balance_sheet")
             + "; " + _NAS_STATS + "; exit 0"
         ),
@@ -70,7 +70,7 @@ with DAG(
     fetch_cash_flow = BashOperator(
         task_id="fetch_cash_flow",
         bash_command=(
-            _NAS_STATS + " && "
+            _NAS_STATS + "; "
             + _DOCKER_BASE.format(statement="cash_flow")
             + "; " + _NAS_STATS + "; exit 0"
         ),
@@ -80,7 +80,7 @@ with DAG(
     fetch_income = BashOperator(
         task_id="fetch_income",
         bash_command=(
-            _NAS_STATS + " && "
+            _NAS_STATS + "; "
             + _DOCKER_BASE.format(statement="income")
             + "; " + _NAS_STATS + "; exit 0"
         ),

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 
-_NAS_STATS = 'echo "=== NAS Stats ===" && date && cat /proc/meminfo | grep -E "MemTotal|MemAvailable" && cat /proc/net/dev | grep -v "lo:" && df -h /volume1'
+_NAS_STATS = 'echo "=== NAS Stats ==="; date; cat /proc/meminfo | grep -E "MemTotal|MemAvailable"; cat /proc/net/dev | grep -v "lo:"; df -h /volume1 2>/dev/null || true'
 
 DOCKER_CMD = (
     "/usr/local/bin/docker run --rm "
@@ -58,7 +58,7 @@ with DAG(
     fetch_index_info = BashOperator(
         task_id="fetch_index_info",
         bash_command=(
-            _NAS_STATS + " && "
+            _NAS_STATS + "; "
             + DOCKER_CMD.format(script="fetch_index_info.py")
             + "; "
             + _NAS_STATS
