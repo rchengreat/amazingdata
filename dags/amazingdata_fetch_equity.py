@@ -15,7 +15,7 @@ from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 
 DOCKER_CMD = (
-    "/usr/local/bin/docker run --rm "
+    "DOCKER_API_VERSION=1.43 /usr/bin/docker run --rm "
     "--user 1026:100 "
     "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
     "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "

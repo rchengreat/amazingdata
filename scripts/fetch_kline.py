@@ -54,6 +54,24 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str):
         logger.info(f"extra_stock_{trade_date}.parquet 已存在，跳过")
         return
 
+    # 从 info_stock_factor.parquet 读取复权因子（由 fetch_stock_info.py 每日更新）
+    factor_path = Path(output_dir) / "info_stock_factor.parquet"
+    if not factor_path.exists():
+        raise FileNotFoundError(
+            f"info_stock_factor.parquet 不存在于 {output_dir}，请先运行 fetch_stock_info.py"
+        )
+    begin_idx = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
+    df_factor_full = pd.read_parquet(factor_path)
+    df_factor = df_factor_full[df_factor_full["datetime"].astype(str) == begin_idx].copy()
+    if df_factor.empty:
+        raise ValueError(
+            f"info_stock_factor.parquet 中无 {begin_idx} 的复权因子数据，"
+            f"请先运行 fetch_stock_info.py 或确认 {trade_date} 是交易日"
+        )
+    logger.info(f"从 info_stock_factor.parquet 读取复权因子：{len(df_factor):,} 行（{begin_idx}）")
+    df_factor.columns = ["code", "kline_time", "backward_factor"]
+    df_factor["kline_time"] = pd.to_datetime(df_factor["kline_time"]).astype("datetime64[ns]")
+
     logger.info(f"拉取 extra_stock_{trade_date}...")
     code_list = bdo.get_code_list("EXTRA_STOCK_A")
     logger.info(f"股票代码数: {len(code_list)}")
@@ -70,25 +88,9 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str):
     df = dict_to_df(df_kline)
     logger.info(f"query_kline 返回 {len(df):,} 行")
 
-    # 实时下载当日复权因子后按日期过滤合并
-    logger.info(f"下载复权因子（全量，过滤 {trade_date}）...")
-    tmp_cache = "/tmp/kline_factor_cache/"
-    Path(tmp_cache).mkdir(parents=True, exist_ok=True)
-    df_factor = bdo.get_backward_factor(code_list, local_path=tmp_cache, is_local=False)
-    if df_factor is not None and not df_factor.empty:
-        df_factor = df_factor.unstack().reset_index()
-        df_factor.columns = ["instrument", "datetime", "backward_factor"]
-        begin_idx = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
-        df_factor = df_factor[df_factor["datetime"].between(begin_idx, begin_idx)].copy()
-        df_factor.columns = ["code", "kline_time", "backward_factor"]
-        df_factor["kline_time"] = pd.to_datetime(df_factor["kline_time"]).astype("datetime64[ns]")
-        logger.info(f"复权因子过滤后 {len(df_factor):,} 行（{begin_idx}）")
-        df = pd.merge(df, df_factor, on=["kline_time", "code"], how="left")
-        if df["backward_factor"].isnull().all():
-            logger.warning(f"复权因子中无 {begin_idx} 数据，backward_factor 留空")
-    else:
-        logger.warning("get_backward_factor 返回空，backward_factor 留空")
-        df["backward_factor"] = float("nan")
+    df = pd.merge(df, df_factor, on=["kline_time", "code"], how="left")
+    if df["backward_factor"].isnull().all():
+        logger.warning(f"复权因子合并后全为空，请检查 info_stock_factor.parquet 中 {begin_idx} 数据")
 
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)

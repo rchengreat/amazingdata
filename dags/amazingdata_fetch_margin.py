@@ -17,7 +17,7 @@ from airflow.providers.standard.operators.bash import BashOperator
 _NAS_STATS = 'echo "=== NAS Stats ==="; date; cat /proc/meminfo | grep -E "MemTotal|MemAvailable"; cat /proc/net/dev | grep -v "lo:"; df -h /volume1 2>/dev/null || true'
 
 DOCKER_CMD = (
-    "/usr/local/bin/docker run --rm "
+    "DOCKER_API_VERSION=1.43 /usr/bin/docker run --rm "
     "--user 1026:100 "
     "-v /volume1/amazingdata/data:/volume1/amazingdata/data "
     "-v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache "
