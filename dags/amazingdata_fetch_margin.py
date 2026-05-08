@@ -3,7 +3,7 @@
 amazingdata_fetch_margin.py
 
 DAG: amazingdata_fetch_margin
-Schedule: 工作日 15:45
+Schedule: 工作日 15:45（周五 16:45）
 
 Tasks:
   fetch_margin — margin_summary_history.parquet（增量）
@@ -47,12 +47,12 @@ default_args = {
 with DAG(
     dag_id="amazingdata_fetch_margin",
     default_args=default_args,
-    schedule="45 15 * * 1-5",
+    schedule=["45 15 * * 1-4", "45 16 * * 5"],
     start_date=datetime(2026, 4, 28),
     catchup=False,
     max_active_runs=1,
     tags=["amazingdata", "margin", "daily"],
-    description="工作日 15:45 拉取 margin_summary_history 和 margin_detail_history",
+    description="工作日 15:45（周五 16:45）拉取 margin_summary_history 和 margin_detail_history",
 ) as dag:
 
     fetch_margin = BashOperator(
