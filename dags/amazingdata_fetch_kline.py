@@ -57,41 +57,24 @@ default_args = {
 
 def send_summary_email(**context):
     """发送 fetch_kline DAG 执行结果汇总邮件"""
-    dag_run = context["dag_run"]
     dag_id = context["dag"].dag_id
-
-    task_ids = ["fetch_kline_etf", "fetch_kline_index", "fetch_kline_stock"]
-    results = []
-    overall_ok = True
-
-    for task_id in task_ids:
-        ti = dag_run.get_task_instance(task_id)
-        state = ti.state if ti else "unknown"
-        icon = "✅" if state == "success" else ("🔁" if state == "up_for_retry" else "❌")
-        if state not in ("success",):
-            overall_ok = False
-        results.append(f"  {icon} {task_id}: {state}")
 
     from datetime import timezone
     cn_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=8)
     date_str = cn_now.strftime("%Y-%m-%d")
     time_str = cn_now.strftime("%Y-%m-%d %H:%M:%S")
 
-    if overall_ok:
-        subject = f"✅ amazingdata_fetch_kline 执行成功 - {date_str}"
-    else:
-        subject = f"⚠️ amazingdata_fetch_kline 部分失败 - {date_str}"
-
+    subject = f"✅ amazingdata_fetch_kline 执行完成 - {date_str}"
     body = (
         f"amazingdata_fetch_kline 执行报告\n\n"
         f"执行时间: {time_str}\n\n"
-        f"任务状态:\n"
-        + "\n".join(results)
-        + "\n\n请检查 Airflow 日志获取详细信息。\n"
+        f"三个任务（etf / index / stock）已全部执行完毕。\n"
+        f"如有任务失败，您将收到单独的失败告警邮件。\n\n"
+        f"请检查 Airflow 日志获取详细信息。\n"
     )
 
     send_email(subject, body, dag_id)
-    logging.info(f"汇总邮件发送完成")
+    logging.info("汇总邮件发送完成")
 
 
 with DAG(
