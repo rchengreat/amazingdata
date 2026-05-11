@@ -64,9 +64,14 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str):
     df_factor_full = pd.read_parquet(factor_path)
     df_factor = df_factor_full[df_factor_full["datetime"].astype(str) == begin_idx].copy()
     if df_factor.empty:
+        logger.error(
+            f"❌ 错误：info_stock_factor.parquet 中无 {begin_idx} 的复权因子数据，"
+            f"无法生成 extra_stock_{trade_date}.parquet 文件。"
+            f"请先运行 fetch_stock_info.py 或确认 {trade_date} 是交易日"
+        )
         raise ValueError(
             f"info_stock_factor.parquet 中无 {begin_idx} 的复权因子数据，"
-            f"请先运行 fetch_stock_info.py 或确认 {trade_date} 是交易日"
+            f"无法生成文件"
         )
     logger.info(f"从 info_stock_factor.parquet 读取复权因子：{len(df_factor):,} 行（{begin_idx}）")
     df_factor.columns = ["code", "kline_time", "backward_factor"]
@@ -90,7 +95,13 @@ def fetch_stock(bdo, mdo, trade_date: str, output_dir: str):
 
     df = pd.merge(df, df_factor, on=["kline_time", "code"], how="left")
     if df["backward_factor"].isnull().all():
-        logger.warning(f"复权因子合并后全为空，请检查 info_stock_factor.parquet 中 {begin_idx} 数据")
+        logger.error(
+            f"❌ 错误：复权因子合并后全为空，无法生成 extra_stock_{trade_date}.parquet 文件。"
+            f"请检查 info_stock_factor.parquet 中 {begin_idx} 数据"
+        )
+        raise ValueError(
+            f"复权因子合并后全为空，无法生成文件"
+        )
 
     df = df.reset_index(drop=True)
     df = normalize_kline_dtypes(df)
