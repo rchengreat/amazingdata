@@ -3,7 +3,7 @@
 amazingdata_fetch_kline.py
 
 DAG: amazingdata_fetch_kline
-Schedule: 工作日 16:15 拉取 etf / index / stock 日 K 线
+Schedule: 工作日 16:30 拉取 etf / index / stock 日 K 线
 
 Tasks（串行）：
   fetch_kline_etf    — extra_etf_{date}.parquet
@@ -199,12 +199,12 @@ def send_summary_email(**context):
 with DAG(
     dag_id="amazingdata_fetch_kline",
     default_args=default_args,
-    schedule="15 16 * * 1-5",
+    schedule="30 16 * * 1-5",
     start_date=datetime(2026, 4, 28),
     catchup=False,
     max_active_runs=1,
     tags=["amazingdata", "kline", "daily"],
-    description="工作日 16:15拉取 etf / index / stock 日 K 线",
+    description="工作日 16:30拉取 etf / index / stock 日 K 线",
 ) as dag:
 
     fetch_etf = PythonOperator(
