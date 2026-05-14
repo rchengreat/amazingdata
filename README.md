@@ -117,7 +117,7 @@ delta = new_codes(existing, all_codes, "MARKET_CODE")       # 返回新增代码
 ### 在 NAS 上手动执行（标准命令）
 
 ```bash
-ssh 13817878619@192.168.100.15
+ssh 13817878619@192.168.1.4
 sudo /usr/local/bin/docker run --rm \
   --user 1026:100 \
   -v /volume1/amazingdata/data:/volume1/amazingdata/data \
@@ -157,7 +157,7 @@ environment:
 
 ```bash
 # NAS 上 clone amazingdata 项目
-ssh 13817878619@192.168.100.15
+ssh 13817878619@192.168.1.4
 git clone https://github.com/rchengreat/amazingdata.git /volume1/amazingdata/project
 
 # DSM 任务计划每 10 分钟 pull（与 qa 项目同理）
@@ -167,7 +167,7 @@ git clone https://github.com/rchengreat/amazingdata.git /volume1/amazingdata/pro
 ### 重启 Airflow 使挂载生效（首次配置后）
 
 ```bash
-ssh 13817878619@192.168.100.15
+ssh 13817878619@192.168.1.4
 cd /volume1/docker/qa-stack
 sudo /var/packages/ContainerManager/target/usr/bin/docker compose down airflow-scheduler airflow-apiserver airflow-dag-processor
 sudo /var/packages/ContainerManager/target/usr/bin/docker compose up -d airflow-scheduler airflow-apiserver airflow-dag-processor
@@ -181,12 +181,12 @@ sudo /var/packages/ContainerManager/target/usr/bin/docker compose up -d airflow-
 
 ```bash
 # 重新构建镜像（在 NAS 上执行）
-ssh 13817878619@192.168.100.15
+ssh 13817878619@192.168.1.4
 cd /volume1/amazingdata
 sudo /usr/local/bin/docker build -t amazingdata-fetcher:latest .
 
 # 上传新脚本后设置权限
-ssh 13817878619@192.168.100.15 "chmod 755 /volume1/amazingdata/scripts/*.py"
+ssh 13817878619@192.168.1.4 "chmod 755 /volume1/amazingdata/scripts/*.py"
 ```
 
 ---

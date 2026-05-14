@@ -8,8 +8,8 @@ fetch_finance.py — 拉取三张财务报表（增量模式）
 
 增量策略：
   SDK 不支持 begin_date 过滤（验证确认参数无效），每次全量下载后客户端过滤。
-  过滤基准：各公司在已有文件中的最大 REPORTING_PERIOD 的最小值（min_max），
-  确保不遗漏尚未提交最新季报的公司。
+  过滤基准：逐公司比较——只保留 SDK 返回中该公司 REPORTING_PERIOD 严格大于
+  parquet 中已有最大值的行。避免少数滞后公司拉低全局阈值导致数据重复写入。
 
 用法：
   python3 scripts/fetch_finance.py --statement balance_sheet|cash_flow|income
@@ -31,7 +31,7 @@ import AmazingData as ad
 
 from amazingdata_fetcher.client import get_client
 from amazingdata_fetcher.writer import write_parquet
-from amazingdata_fetcher.incremental import load_existing, max_date_str, append_new_rows
+from amazingdata_fetcher.incremental import load_existing, max_date_str
 from amazingdata_fetcher.monitor import SystemMonitor
 
 load_dotenv()
@@ -44,16 +44,47 @@ def dict_to_df(d: dict) -> pd.DataFrame:
     return pd.concat(non_empty, ignore_index=True)
 
 
-def _min_max_date_per_code(existing: pd.DataFrame, date_col: str, code_col: str = "MARKET_CODE") -> str:
+def _append_per_code(existing: pd.DataFrame | None, new_df: pd.DataFrame,
+                     date_col: str, code_col: str = "MARKET_CODE") -> pd.DataFrame:
+    """
+    Per-company incremental merge: for each company, only keep rows from new_df
+    whose REPORTING_PERIOD is strictly greater than that company's current max in existing.
+
+    Replaces the old global min_max cutoff, which was dragged down by a handful of
+    laggard companies and caused the script to redundantly re-process rows already stored.
+    """
     if existing is None:
-        return None
-    if code_col not in existing.columns:
-        return max_date_str(existing, date_col)
-    per_code = existing.groupby(code_col)[date_col].max()
-    val = per_code.min()
-    if hasattr(val, 'strftime'):
-        return val.strftime("%Y%m%d")
-    return str(int(val))[:8]
+        return new_df.reset_index(drop=True)
+
+    # Normalise both sides to YYYYMMDD strings for comparison
+    def to_str(col: pd.Series) -> pd.Series:
+        if pd.api.types.is_datetime64_any_dtype(col):
+            return col.dt.strftime("%Y%m%d")
+        return col.astype(str).str[:8]
+
+    existing = existing.copy()
+    existing["_rp_str"] = to_str(existing[date_col])
+    new_df = new_df.copy()
+    new_df["_rp_str"] = to_str(new_df[date_col])
+
+    # Per-company max date already stored
+    existing_max = existing.groupby(code_col)["_rp_str"].max()
+
+    # Keep only rows newer than the per-company max (or all rows for new companies)
+    def is_new(row):
+        max_dt = existing_max.get(row[code_col])
+        return max_dt is None or row["_rp_str"] > max_dt
+
+    mask = new_df.apply(is_new, axis=1)
+    new_rows = new_df[mask].drop(columns=["_rp_str"])
+    existing_clean = existing.drop(columns=["_rp_str"])
+
+    logger.info(f"增量行数（逐公司比较）: {len(new_rows):,}")
+    if new_rows.empty:
+        return None  # sentinel: nothing to write
+
+    result = pd.concat([existing_clean, new_rows], ignore_index=True)
+    return result
 
 
 def _sdk_fetch(fn, *args):
@@ -66,15 +97,12 @@ def _sdk_fetch(fn, *args):
 
 def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
-    logger.info("开始拉取 finance_balance_sheet_history（增量：追加新 REPORTING_PERIOD 行）")
+    logger.info("开始拉取 finance_balance_sheet_history（增量：逐公司比较 REPORTING_PERIOD）")
     out_path = str(Path(output_dir) / "finance_balance_sheet_history.parquet")
     existing = load_existing(out_path)
-    cutoff_dt = _min_max_date_per_code(existing, "REPORTING_PERIOD")
-    logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
-    tmp_cache = sdk_cache_dir
     mon.snapshot("balance_sheet_before_sdk")
-    df = _sdk_fetch(ido.get_balance_sheet, code_list, tmp_cache, False)
+    df = _sdk_fetch(ido.get_balance_sheet, code_list, sdk_cache_dir, False)
     mon.snapshot("balance_sheet_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_balance_sheet 返回空数据，跳过")
@@ -83,8 +111,8 @@ def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: st
         df = dict_to_df(df)
     logger.info(f"SDK 返回 {len(df):,} 行")
 
-    result = append_new_rows(existing, df, "REPORTING_PERIOD", cutoff_dt)
-    if result is existing:
+    result = _append_per_code(existing, df, "REPORTING_PERIOD")
+    if result is None:
         logger.info("无新增行，跳过写入")
         return
     write_parquet(result, output_dir, "finance_balance_sheet_history.parquet")
@@ -93,15 +121,12 @@ def fetch_balance_sheet(ido, code_list: list, output_dir: str, sdk_cache_dir: st
 
 def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
-    logger.info("开始拉取 finance_cash_flow_history（增量：追加新 REPORTING_PERIOD 行）")
+    logger.info("开始拉取 finance_cash_flow_history（增量：逐公司比较 REPORTING_PERIOD）")
     out_path = str(Path(output_dir) / "finance_cash_flow_history.parquet")
     existing = load_existing(out_path)
-    cutoff_dt = _min_max_date_per_code(existing, "REPORTING_PERIOD")
-    logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
-    tmp_cache = sdk_cache_dir
     mon.snapshot("cash_flow_before_sdk")
-    df = _sdk_fetch(ido.get_cash_flow, code_list, tmp_cache, False)
+    df = _sdk_fetch(ido.get_cash_flow, code_list, sdk_cache_dir, False)
     mon.snapshot("cash_flow_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_cash_flow 返回空数据，跳过")
@@ -110,8 +135,8 @@ def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str, m
         df = dict_to_df(df)
     logger.info(f"SDK 返回 {len(df):,} 行")
 
-    result = append_new_rows(existing, df, "REPORTING_PERIOD", cutoff_dt)
-    if result is existing:
+    result = _append_per_code(existing, df, "REPORTING_PERIOD")
+    if result is None:
         logger.info("无新增行，跳过写入")
         return
     write_parquet(result, output_dir, "finance_cash_flow_history.parquet")
@@ -120,15 +145,12 @@ def fetch_cash_flow(ido, code_list: list, output_dir: str, sdk_cache_dir: str, m
 
 def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon: SystemMonitor):
     logger.info("=" * 60)
-    logger.info("开始拉取 finance_income_history（增量：追加新 REPORTING_PERIOD 行）")
+    logger.info("开始拉取 finance_income_history（增量：逐公司比较 REPORTING_PERIOD）")
     out_path = str(Path(output_dir) / "finance_income_history.parquet")
     existing = load_existing(out_path)
-    cutoff_dt = _min_max_date_per_code(existing, "REPORTING_PERIOD")
-    logger.info(f"增量基准日期（各公司最大日期的最小值）: {cutoff_dt}")
 
-    tmp_cache = sdk_cache_dir
     mon.snapshot("income_before_sdk")
-    df = _sdk_fetch(ido.get_income, code_list, tmp_cache, False)
+    df = _sdk_fetch(ido.get_income, code_list, sdk_cache_dir, False)
     mon.snapshot("income_after_sdk")
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         logger.warning("get_income 返回空数据，跳过")
@@ -137,8 +159,8 @@ def fetch_income(ido, code_list: list, output_dir: str, sdk_cache_dir: str, mon:
         df = dict_to_df(df)
     logger.info(f"SDK 返回 {len(df):,} 行")
 
-    result = append_new_rows(existing, df, "REPORTING_PERIOD", cutoff_dt)
-    if result is existing:
+    result = _append_per_code(existing, df, "REPORTING_PERIOD")
+    if result is None:
         logger.info("无新增行，跳过写入")
         return
     write_parquet(result, output_dir, "finance_income_history.parquet")
