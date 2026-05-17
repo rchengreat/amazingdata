@@ -66,7 +66,7 @@ amazingdata/
 | `fetch_index_info.py`    | `info_index_detail_history.parquet`<br>`info_index_weight_history.parquet`                                         | 15:55        |
 | `fetch_stock_info.py`    | `info_stock_basic.parquet`<br>`info_stock_factor.parquet`                                                          | 17:00        |
 | `fetch_kline.py`         | `extra_stock_{date}.parquet`<br>`extra_index_{date}.parquet`<br>`extra_etf_{date}.parquet`                         | 17:15        |
-| `fetch_margin.py`        | `margin_summary_history.parquet`<br>`margin_detail_history.parquet`                                                | 18:30        |
+| `fetch_margin.py`        | `margin_summary_history.parquet`<br>`margin_detail_history.parquet`                                                | 17:45        |
 | `monthly_cleanup.py`     | 合并 → `extra_{type}_history.parquet`                                                                                | 每月 2 日 01:00 |
 
 ### 增量策略说明
