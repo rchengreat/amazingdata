@@ -7,15 +7,21 @@ Schedule: 工作日 05:00
 
 Tasks（串行，各自独立 docker run）：
   fetch_balance_sheet — finance_balance_sheet_history.parquet
+  check_has_new_rows  — 若 balance_sheet 无新增行，跳过后续任务
   fetch_cash_flow     — finance_cash_flow_history.parquet
   fetch_income        — finance_income_history.parquet
 
 每张报表独立运行，SDK segfault 不影响其他报表。
+若 balance_sheet 无新增行，则 cash_flow 和 income 也跳过（同一报告期无新数据）。
 """
 
+import os
 from datetime import datetime, timedelta
+
 from airflow import DAG
+from airflow.exceptions import AirflowSkipException
 from airflow.providers.standard.operators.bash import BashOperator
+from airflow.providers.standard.operators.python import PythonOperator
 
 _NAS_STATS = 'echo "=== NAS Stats ==="; date; cat /proc/meminfo | grep -E "MemTotal|MemAvailable"; cat /proc/net/dev | grep -v "lo:"; df -h /volume1 2>/dev/null || true'
 
@@ -37,6 +43,15 @@ _DOCKER_BASE = (
     "amazingdata-fetcher:latest "
     "python3 scripts/fetch_finance.py --statement {statement}"
 )
+
+_SKIP_MARKER = "/tmp/amazingdata_finance_skip"
+
+
+def _check_has_new_rows(**context):
+    if os.path.exists(_SKIP_MARKER):
+        os.remove(_SKIP_MARKER)
+        raise AirflowSkipException("balance_sheet 无新增行，跳过 cash_flow 和 income")
+
 
 default_args = {
     "owner": "rollandchen",
@@ -62,9 +77,16 @@ with DAG(
         bash_command=(
             _NAS_STATS + "; "
             + _DOCKER_BASE.format(statement="balance_sheet")
-            + "; " + _NAS_STATS + "; exit 0"
+            + " 2>&1 | tee /tmp/amazingdata_bs_output.log; "
+            + 'grep -q "无新增行，跳过写入" /tmp/amazingdata_bs_output.log && touch ' + _SKIP_MARKER + "; "
+            + _NAS_STATS + "; exit 0"
         ),
         execution_timeout=timedelta(hours=3),
+    )
+
+    check_has_new_rows = PythonOperator(
+        task_id="check_has_new_rows",
+        python_callable=_check_has_new_rows,
     )
 
     fetch_cash_flow = BashOperator(
@@ -87,4 +109,4 @@ with DAG(
         execution_timeout=timedelta(hours=3),
     )
 
-    fetch_balance_sheet >> fetch_cash_flow >> fetch_income
+    fetch_balance_sheet >> check_has_new_rows >> fetch_cash_flow >> fetch_income
