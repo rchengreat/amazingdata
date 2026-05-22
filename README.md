@@ -195,31 +195,27 @@ ssh 13817878619@192.168.1.4 "chmod 755 /volume1/amazingdata/scripts/*.py"
 
 ### `Connections of this user exceed the max limitation`
 
-SDK 每个账号只允许一个并发连接。当 Docker 容器被强制终止（Airflow 超时、手动 `docker kill`、NAS 重启等），连接未能正常释放，下次运行就会报此错误。
+SDK 每个账号只允许一个并发连接。当 Docker 容器被强制终止（Airflow 超时、手动 `docker kill`、NAS 重启等），连接可能未能正常释放，下次运行就会报此错误。
 
 **第 1 步：确认有无残留容器**
 
 ```bash
 ssh 13817878619@192.168.100.15
-sudo /usr/local/bin/docker ps --filter ancestor=amazingdata-fetcher:latest
+echo 'Half2@100!' | sudo -S /usr/local/bin/docker ps --filter ancestor=amazingdata-fetcher:latest
 ```
 
 如有输出，记下容器 ID，然后强制停止：
 
 ```bash
-sudo /usr/local/bin/docker kill <container_id>
+echo 'Half2@100!' | sudo -S /usr/local/bin/docker kill <container_id>
 ```
 
-**第 2 步：等待服务端连接超时（约 30–60 秒）**
+**第 2 步：等待后重试**
 
-容器停止后，服务端通常在 30–60 秒内自动释放连接。
-
-**第 3 步：手动重试脚本**
-
-连接释放后，脚本启动时会先调用 `ad.logout()` 清除残留会话，再重新登录（见 `src/amazingdata_fetcher/client.py`）：
+容器停止后等待几分钟，然后尝试重新运行脚本。`get_client()` 会在登录时自动携带 `force_logout=True` 标志，尝试踢掉旧会话：
 
 ```bash
-sudo /usr/local/bin/docker run --rm \
+echo 'Half2@100!' | sudo -S /usr/local/bin/docker run --rm \
   --user 1026:100 \
   -v /volume1/amazingdata/data:/volume1/amazingdata/data \
   -v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache \
@@ -230,14 +226,20 @@ sudo /usr/local/bin/docker run --rm \
   python3 scripts/<失败的脚本名>.py
 ```
 
-**第 4 步：在 Airflow 中重跑失败的 DAG**
+**第 3 步：如仍然失败——联系 AmazingData 客服强制释放**
+
+若等待后仍报 `-98` 错误，说明服务端连接表未超时，客户端无法自行解锁。需联系中国银河证券/AmazingData 技术支持，请他们在服务端强制释放账号 `10100214892` 在服务器 `101.230.159.234:8600` 的连接。
+
+> **注意**：`ad.logout(username)` 在没有活跃连接的情况下无法向服务端发送 ForceLogout 消息（返回错误码 -86），因此仅靠客户端无法解锁服务端持有的会话。
+
+**第 4 步：联系客服后在 Airflow 中重跑失败的 DAG**
 
 Airflow UI → 找到对应 DAG → Clear 失败的 Task Run → 让调度器自动重试。
 
-**防范措施（已内置）**
+**内置防范措施**
 
 - 所有脚本的 `main()` 均用 `try/finally` 确保退出时调用 `logout()`，覆盖正常退出与异常退出两种路径。
-- `client.py` 中的 `get_client()` 每次登录前先尝试 `ad.logout()`，自动清除上次残留会话。
+- `get_client()` 每次登录前会通过内部 `set_cfg(force_logout=True)` 尝试踢掉旧会话（仅在服务端连接尚可达时有效）。
 - **不要**再使用 `os._exit()` 或 `atexit` 注册登出——`os._exit()` 绕过 `finally` 块，`atexit` 也被 `os._exit()` 绕过。
 
 ---
