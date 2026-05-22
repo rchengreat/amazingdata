@@ -22,7 +22,7 @@ from loguru import logger
 import pandas as pd
 import AmazingData as ad
 
-from amazingdata_fetcher.client import get_client
+from amazingdata_fetcher.client import get_client, logout
 from amazingdata_fetcher.writer import write_parquet
 
 load_dotenv()
@@ -91,26 +91,29 @@ def main():
     logger.info("登录 AmazingData...")
     get_client()
 
-    bdo = ad.BaseData()
-    ido = ad.InfoData()
+    try:
+        bdo = ad.BaseData()
+        ido = ad.InfoData()
 
-    code_list = bdo.get_code_list()
-    logger.info(f"获取到 {len(code_list)} 个股票代码")
+        code_list = bdo.get_code_list()
+        logger.info(f"获取到 {len(code_list)} 个股票代码")
 
-    errors = []
-    for name, fn in [
-        ("equity_structure", lambda: fetch_equity_structure(ido, code_list, output_dir)),
-        ("equity_dividend",  lambda: fetch_equity_dividend(ido, code_list, output_dir)),
-    ]:
-        try:
-            fn()
-        except Exception as e:
-            logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
-            errors.append(name)
+        errors = []
+        for name, fn in [
+            ("equity_structure", lambda: fetch_equity_structure(ido, code_list, output_dir)),
+            ("equity_dividend",  lambda: fetch_equity_dividend(ido, code_list, output_dir)),
+        ]:
+            try:
+                fn()
+            except Exception as e:
+                logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
+                errors.append(name)
 
-    if errors:
-        raise RuntimeError(f"以下数据拉取失败: {errors}")
-    logger.info("fetch_equity.py 全部完成")
+        if errors:
+            raise RuntimeError(f"以下数据拉取失败: {errors}")
+        logger.info("fetch_equity.py 全部完成")
+    finally:
+        logout()
 
 
 if __name__ == "__main__":

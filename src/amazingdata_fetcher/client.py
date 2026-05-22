@@ -1,4 +1,3 @@
-import atexit
 import os
 import AmazingData as ad
 from dotenv import load_dotenv
@@ -23,20 +22,14 @@ def get_client():
         port=int(os.environ["AD_PORT"]),
     )
 
-    # Ensure the session is released when the process exits normally.
-    atexit.register(_logout_once)
-
     return ad
 
 
-_logged_out = False
-
-
-def _logout_once():
-    global _logged_out
-    if not _logged_out:
-        _logged_out = True
-        try:
-            ad.logout()
-        except Exception:
-            pass
+def logout():
+    """显式释放 SDK 连接。每个脚本的 main() 应在 finally 块中调用此函数。
+    注意：不要用 atexit 注册此函数——os._exit() 会绕过 atexit，导致连接泄漏。
+    """
+    try:
+        ad.logout()
+    except Exception:
+        pass

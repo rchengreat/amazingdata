@@ -21,7 +21,7 @@ from loguru import logger
 import pandas as pd
 import AmazingData as ad
 
-from amazingdata_fetcher.client import get_client
+from amazingdata_fetcher.client import get_client, logout
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, max_date_str, append_new_rows
 from amazingdata_fetcher.monitor import SystemMonitor
@@ -107,22 +107,24 @@ def main():
     get_client()
     mon.snapshot("after_login")
 
-    bdo = ad.BaseData()
-    ido = ad.InfoData()
+    try:
+        bdo = ad.BaseData()
+        ido = ad.InfoData()
 
-    index_codes = bdo.get_code_list("EXTRA_INDEX_A_SH_SZ")
-    logger.info(f"获取到 {len(index_codes)} 个指数代码")
+        index_codes = bdo.get_code_list("EXTRA_INDEX_A_SH_SZ")
+        logger.info(f"获取到 {len(index_codes)} 个指数代码")
 
-    fetch_index_detail(ido, index_codes, output_dir, sdk_cache_dir, mon)
+        fetch_index_detail(ido, index_codes, output_dir, sdk_cache_dir, mon)
 
-    major_index_codes = [
-        "000016.SH", "000300.SH", "000905.SH", "000906.SH",
-        "000852.SH", "000985.SH", "000688.SH", "399006.SZ",
-    ]
-    fetch_index_weight(ido, major_index_codes, output_dir, sdk_cache_dir, mon)
+        major_index_codes = [
+            "000016.SH", "000300.SH", "000905.SH", "000906.SH",
+            "000852.SH", "000985.SH", "000688.SH", "399006.SZ",
+        ]
+        fetch_index_weight(ido, major_index_codes, output_dir, sdk_cache_dir, mon)
 
-    logger.info("fetch_index_info.py 全部完成")
-    os._exit(0)
+        logger.info("fetch_index_info.py 全部完成")
+    finally:
+        logout()
 
 
 if __name__ == "__main__":

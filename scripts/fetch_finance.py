@@ -29,7 +29,7 @@ from loguru import logger
 import pandas as pd
 import AmazingData as ad
 
-from amazingdata_fetcher.client import get_client
+from amazingdata_fetcher.client import get_client, logout
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, max_date_str
 from amazingdata_fetcher.monitor import SystemMonitor
@@ -194,40 +194,42 @@ def main():
     get_client()
     mon.snapshot("after_login")
 
-    bdo = ad.BaseData()
-    ido = ad.InfoData()
+    try:
+        bdo = ad.BaseData()
+        ido = ad.InfoData()
 
-    if args.test_codes:
-        code_list = args.test_codes
-        logger.info(f"测试模式，使用指定代码: {code_list}")
-    else:
-        code_list = bdo.get_code_list()
-        logger.info(f"获取到 {len(code_list)} 个股票代码")
+        if args.test_codes:
+            code_list = args.test_codes
+            logger.info(f"测试模式，使用指定代码: {code_list}")
+        else:
+            code_list = bdo.get_code_list()
+            logger.info(f"获取到 {len(code_list)} 个股票代码")
 
-    all_statements = [
-        ("balance_sheet", lambda: fetch_balance_sheet(ido, code_list, output_dir, sdk_cache_dir, mon)),
-        ("cash_flow",     lambda: fetch_cash_flow(ido, code_list, output_dir, sdk_cache_dir, mon)),
-        ("income",        lambda: fetch_income(ido, code_list, output_dir, sdk_cache_dir, mon)),
-    ]
+        all_statements = [
+            ("balance_sheet", lambda: fetch_balance_sheet(ido, code_list, output_dir, sdk_cache_dir, mon)),
+            ("cash_flow",     lambda: fetch_cash_flow(ido, code_list, output_dir, sdk_cache_dir, mon)),
+            ("income",        lambda: fetch_income(ido, code_list, output_dir, sdk_cache_dir, mon)),
+        ]
 
-    if args.statement:
-        statements = [(n, fn) for n, fn in all_statements if n == args.statement]
-    else:
-        statements = all_statements
+        if args.statement:
+            statements = [(n, fn) for n, fn in all_statements if n == args.statement]
+        else:
+            statements = all_statements
 
-    errors = []
-    for name, fn in statements:
-        try:
-            fn()
-        except Exception as e:
-            logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
-            mon.snapshot(f"{name}_error")
-            errors.append(name)
+        errors = []
+        for name, fn in statements:
+            try:
+                fn()
+            except Exception as e:
+                logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
+                mon.snapshot(f"{name}_error")
+                errors.append(name)
 
-    if errors:
-        raise RuntimeError(f"以下报表拉取失败: {errors}")
-    logger.info("fetch_finance.py 全部完成")
-    os._exit(0)
+        if errors:
+            raise RuntimeError(f"以下报表拉取失败: {errors}")
+        logger.info("fetch_finance.py 全部完成")
+    finally:
+        logout()
 
 
 if __name__ == "__main__":

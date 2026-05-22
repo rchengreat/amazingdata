@@ -22,7 +22,7 @@ from loguru import logger
 import pandas as pd
 import AmazingData as ad
 
-from amazingdata_fetcher.client import get_client
+from amazingdata_fetcher.client import get_client, logout
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, max_date_str, append_new_rows
 from amazingdata_fetcher.monitor import SystemMonitor
@@ -143,33 +143,35 @@ def main():
     get_client()
     mon.snapshot("after_login")
 
-    bdo = ad.BaseData()
-    ido = ad.InfoData()
+    try:
+        bdo = ad.BaseData()
+        ido = ad.InfoData()
 
-    code_list = bdo.get_code_list()
-    logger.info(f"获取到 {len(code_list)} 个股票代码")
+        code_list = bdo.get_code_list()
+        logger.info(f"获取到 {len(code_list)} 个股票代码")
 
-    exclusion = load_exclusion_list(output_dir)
-    if exclusion:
-        code_list = [c for c in code_list if c not in exclusion]
-        logger.info(f"排除 {len(exclusion)} 只后，剩余 {len(code_list)} 只股票代码")
+        exclusion = load_exclusion_list(output_dir)
+        if exclusion:
+            code_list = [c for c in code_list if c not in exclusion]
+            logger.info(f"排除 {len(exclusion)} 只后，剩余 {len(code_list)} 只股票代码")
 
-    errors = []
-    for name, fn in [
-        ("margin_summary", lambda: fetch_margin_summary(ido, output_dir, sdk_cache_dir, mon)),
-        ("margin_detail",  lambda: fetch_margin_detail(ido, code_list, output_dir, sdk_cache_dir, mon)),
-    ]:
-        try:
-            fn()
-        except Exception as e:
-            logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
-            mon.snapshot(f"{name}_error")
-            errors.append(name)
+        errors = []
+        for name, fn in [
+            ("margin_summary", lambda: fetch_margin_summary(ido, output_dir, sdk_cache_dir, mon)),
+            ("margin_detail",  lambda: fetch_margin_detail(ido, code_list, output_dir, sdk_cache_dir, mon)),
+        ]:
+            try:
+                fn()
+            except Exception as e:
+                logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
+                mon.snapshot(f"{name}_error")
+                errors.append(name)
 
-    if errors:
-        raise RuntimeError(f"以下数据拉取失败: {errors}")
-    logger.info("fetch_margin.py 全部完成")
-    os._exit(0)
+        if errors:
+            raise RuntimeError(f"以下数据拉取失败: {errors}")
+        logger.info("fetch_margin.py 全部完成")
+    finally:
+        logout()
 
 
 if __name__ == "__main__":

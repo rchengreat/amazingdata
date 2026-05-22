@@ -24,7 +24,7 @@ from loguru import logger
 import pandas as pd
 import AmazingData as ad
 
-from amazingdata_fetcher.client import get_client
+from amazingdata_fetcher.client import get_client, logout
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, new_codes
 from amazingdata_fetcher.monitor import SystemMonitor
@@ -156,25 +156,27 @@ def main():
     get_client()
     mon.snapshot("after_login")
 
-    bdo = ad.BaseData()
-    ido = ad.InfoData()
+    try:
+        bdo = ad.BaseData()
+        ido = ad.InfoData()
 
-    errors = []
-    for name, fn in [
-        ("stock_basic", lambda: fetch_stock_basic(bdo, ido, output_dir, mon)),
-        ("stock_factor", lambda: fetch_stock_factor(bdo, output_dir, sdk_cache_dir, mon)),
-    ]:
-        try:
-            fn()
-        except Exception as e:
-            logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
-            mon.snapshot(f"{name}_error")
-            errors.append(name)
+        errors = []
+        for name, fn in [
+            ("stock_basic", lambda: fetch_stock_basic(bdo, ido, output_dir, mon)),
+            ("stock_factor", lambda: fetch_stock_factor(bdo, output_dir, sdk_cache_dir, mon)),
+        ]:
+            try:
+                fn()
+            except Exception as e:
+                logger.error(f"fetch_{name} 失败: {type(e).__name__}: {e}")
+                mon.snapshot(f"{name}_error")
+                errors.append(name)
 
-    if errors:
-        raise RuntimeError(f"以下数据拉取失败: {errors}")
-    logger.info("fetch_stock_info.py 全部完成")
-    os._exit(0)
+        if errors:
+            raise RuntimeError(f"以下数据拉取失败: {errors}")
+        logger.info("fetch_stock_info.py 全部完成")
+    finally:
+        logout()
 
 
 if __name__ == "__main__":

@@ -191,7 +191,58 @@ ssh 13817878619@192.168.1.4 "chmod 755 /volume1/amazingdata/scripts/*.py"
 
 ---
 
-## 添加新数据类型
+## 故障处理
+
+### `Connections of this user exceed the max limitation`
+
+SDK 每个账号只允许一个并发连接。当 Docker 容器被强制终止（Airflow 超时、手动 `docker kill`、NAS 重启等），连接未能正常释放，下次运行就会报此错误。
+
+**第 1 步：确认有无残留容器**
+
+```bash
+ssh 13817878619@192.168.100.15
+sudo /usr/local/bin/docker ps --filter ancestor=amazingdata-fetcher:latest
+```
+
+如有输出，记下容器 ID，然后强制停止：
+
+```bash
+sudo /usr/local/bin/docker kill <container_id>
+```
+
+**第 2 步：等待服务端连接超时（约 30–60 秒）**
+
+容器停止后，服务端通常在 30–60 秒内自动释放连接。
+
+**第 3 步：手动重试脚本**
+
+连接释放后，脚本启动时会先调用 `ad.logout()` 清除残留会话，再重新登录（见 `src/amazingdata_fetcher/client.py`）：
+
+```bash
+sudo /usr/local/bin/docker run --rm \
+  --user 1026:100 \
+  -v /volume1/amazingdata/data:/volume1/amazingdata/data \
+  -v /volume1/amazingdata/sdk_cache:/volume1/amazingdata/sdk_cache \
+  -v /volume1/amazingdata/logs:/app/logs \
+  --env-file /volume1/amazingdata/.env \
+  -e NUMBA_CACHE_DIR=/tmp/numba_cache \
+  amazingdata-fetcher:latest \
+  python3 scripts/<失败的脚本名>.py
+```
+
+**第 4 步：在 Airflow 中重跑失败的 DAG**
+
+Airflow UI → 找到对应 DAG → Clear 失败的 Task Run → 让调度器自动重试。
+
+**防范措施（已内置）**
+
+- 所有脚本的 `main()` 均用 `try/finally` 确保退出时调用 `logout()`，覆盖正常退出与异常退出两种路径。
+- `client.py` 中的 `get_client()` 每次登录前先尝试 `ad.logout()`，自动清除上次残留会话。
+- **不要**再使用 `os._exit()` 或 `atexit` 注册登出——`os._exit()` 绕过 `finally` 块，`atexit` 也被 `os._exit()` 绕过。
+
+---
+
+
 
 以下是添加一种新数据类型的完整步骤，以 `get_treasury_yield` 为例：
 

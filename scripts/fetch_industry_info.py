@@ -20,7 +20,7 @@ from loguru import logger
 import pandas as pd
 import AmazingData as ad
 
-from amazingdata_fetcher.client import get_client
+from amazingdata_fetcher.client import get_client, logout
 from amazingdata_fetcher.writer import write_parquet
 from amazingdata_fetcher.incremental import load_existing, max_date_str, append_new_rows
 
@@ -75,23 +75,26 @@ def main():
     logger.info("登录 AmazingData...")
     get_client()
 
-    ido = ad.InfoData()
+    try:
+        ido = ad.InfoData()
 
-    fetch_industry_basic(ido, output_dir, sdk_cache_dir)
+        fetch_industry_basic(ido, output_dir, sdk_cache_dir)
 
-    # 从刚写入的 industry_basic 文件读取行业代码
-    industry_basic_path = Path(output_dir) / "info_industry_basic_history.parquet"
-    if not industry_basic_path.exists():
-        logger.error("info_industry_basic_history.parquet 不存在，无法获取行业代码，跳过行业成分拉取")
-        return
+        # 从刚写入的 industry_basic 文件读取行业代码
+        industry_basic_path = Path(output_dir) / "info_industry_basic_history.parquet"
+        if not industry_basic_path.exists():
+            logger.error("info_industry_basic_history.parquet 不存在，无法获取行业代码，跳过行业成分拉取")
+            return
 
-    df_ind = pd.read_parquet(industry_basic_path)
-    industry_codes = df_ind["INDEX_CODE"].dropna().unique().tolist()
-    logger.info(f"从 info_industry_basic_history 获取到 {len(industry_codes)} 个行业代码")
+        df_ind = pd.read_parquet(industry_basic_path)
+        industry_codes = df_ind["INDEX_CODE"].dropna().unique().tolist()
+        logger.info(f"从 info_industry_basic_history 获取到 {len(industry_codes)} 个行业代码")
 
-    fetch_industry_detail(ido, industry_codes, output_dir, sdk_cache_dir)
+        fetch_industry_detail(ido, industry_codes, output_dir, sdk_cache_dir)
 
-    logger.info("fetch_industry_info.py 全部完成")
+        logger.info("fetch_industry_info.py 全部完成")
+    finally:
+        logout()
 
 
 if __name__ == "__main__":

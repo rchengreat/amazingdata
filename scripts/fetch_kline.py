@@ -27,7 +27,7 @@ from loguru import logger
 import pandas as pd
 import AmazingData as ad
 
-from amazingdata_fetcher.client import get_client
+from amazingdata_fetcher.client import get_client, logout
 from amazingdata_fetcher.writer import write_parquet
 
 load_dotenv()
@@ -180,21 +180,24 @@ def main():
     logger.info(f"登录 AmazingData... 拉取日期: {trade_date}")
     get_client()
 
-    bdo = ad.BaseData()
-    calendar = bdo.get_calendar()
-    mdo = ad.MarketData(calendar)
+    try:
+        bdo = ad.BaseData()
+        calendar = bdo.get_calendar()
+        mdo = ad.MarketData(calendar)
 
-    ktypes = ["stock", "index", "etf"] if args.type == "all" else [args.type]
+        ktypes = ["stock", "index", "etf"] if args.type == "all" else [args.type]
 
-    for ktype in ktypes:
-        if ktype == "stock":
-            fetch_stock(bdo, mdo, trade_date, output_dir)
-        elif ktype == "index":
-            fetch_index(bdo, mdo, trade_date, output_dir)
-        elif ktype == "etf":
-            fetch_etf(bdo, mdo, trade_date, output_dir)
+        for ktype in ktypes:
+            if ktype == "stock":
+                fetch_stock(bdo, mdo, trade_date, output_dir)
+            elif ktype == "index":
+                fetch_index(bdo, mdo, trade_date, output_dir)
+            elif ktype == "etf":
+                fetch_etf(bdo, mdo, trade_date, output_dir)
 
-    logger.info("fetch_kline.py 全部完成")
+        logger.info("fetch_kline.py 全部完成")
+    finally:
+        logout()
 
 
 if __name__ == "__main__":
